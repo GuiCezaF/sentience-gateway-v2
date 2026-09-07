@@ -7,13 +7,12 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "build": "nest build",
+    "build": "tsc -p tsconfig.build.json --noEmit",
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "nest start",
-    "start:dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start": "bun src/main.ts",
+    "start:dev": "bun --watch src/main.ts",
+    "start:debug": "bun --inspect --watch src/main.ts",
     "lint": "oxlint src/ test/",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -23,10 +22,15 @@
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
+    "@nestjs/config": "^12.0.0",
     "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
+    "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.12",
+    "postgres": "^3.4.9",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^4"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
@@ -37,6 +41,7 @@
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.2",
+    "drizzle-kit": "^0.31.10",
     "oxlint": "^1.58.0",
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
