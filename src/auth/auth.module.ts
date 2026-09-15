@@ -1,23 +1,9 @@
-import {
-  Global,
-  Module,
-  UnauthorizedException,
-  type Provider,
-} from '@nestjs/common';
+import { Global, Module, type Provider } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
-import {
-  AUTH_PROVIDER,
-  type AuthProvider,
-  type AuthUser,
-} from './auth-provider.interface.js';
+import { AUTH_PROVIDER, type AuthProvider } from './auth-provider.interface.js';
 import { AuthGuard } from './auth.guard.js';
-
-class UnconfiguredAuthProvider implements AuthProvider {
-  async verify(_token: string): Promise<AuthUser> {
-    throw new UnauthorizedException('AuthProvider not configured');
-  }
-}
+import { SupabaseAuthProvider } from './supabase-auth.provider.js';
 
 export const authProviderFactory: Provider = {
   provide: AUTH_PROVIDER,
@@ -36,7 +22,8 @@ export const authProviderFactory: Provider = {
       return new FakeAuthProvider();
     }
 
-    return new UnconfiguredAuthProvider();
+    const supabaseUrl = config.get('SUPABASE_URL', { infer: true });
+    return new SupabaseAuthProvider(supabaseUrl);
   },
   inject: [ConfigService],
 };

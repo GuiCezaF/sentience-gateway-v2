@@ -42,8 +42,51 @@ Recebe Sincronizações enviadas pelo Agente, autentica o Usuário via `AuthProv
 
 | Header | Obrigatório | Formato / Descrição |
 | --- | --- | --- |
-| `Authorization` | sim | `Bearer <token>`. Em desenvolvimento local com `AUTH_PROVIDER=fake` ou testes: `Bearer user:<uuid>`. |
+| `Authorization` | sim | `Bearer <token>`. Padrão: access token emitido pelo Supabase Auth (JWT ES256). Em testes e desenvolvimento local com `AUTH_PROVIDER=fake`: `Bearer user:<uuid>`. |
 | `Content-Type` | sim | `application/json` |
+
+### Autenticação Real com Supabase Auth (ADR 0002)
+
+O Gateway valida access tokens do Supabase Auth localmente contra o endpoint JWKS (`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`), exigindo assinatura assimétrica ES256, issuer `${SUPABASE_URL}/auth/v1` e audience `authenticated`. O `user_id` associado às Sincronizações e Classificações é extraído do claim `sub`.
+
+#### Verificação manual com usuário real do Supabase
+
+1. Obtenha um access token via REST API de Auth do projeto Supabase (com as credenciais de um usuário de teste criado no Supabase Auth):
+
+```bash
+curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
+  -H "apikey: ${SUPABASE_ANON_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "usuario-teste@exemplo.com",
+    "password": "senha-do-usuario"
+  }'
+```
+
+A resposta conterá `access_token` e o objeto de usuário com o `id` (`sub`).
+
+2. Envie um Pulso para o Gateway com o token real:
+
+```bash
+curl -X POST http://localhost:3000/v1/syncs \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject_id": "inst-teste",
+    "sent_at": "2026-09-15T20:00:00.000Z",
+    "health": "ok",
+    "items": []
+  }'
+```
+
+O Gateway responderá `201 Created` e registrará a Sincronização no banco com `user_id` correspondente ao `sub` do token.
+
+#### Pendência do Agente
+
+> [!NOTE]
+> O Agente (Sentience App) ainda não implementa login no Supabase Auth nem o envio do header `Authorization: Bearer <access_token>` com renovação automática de sessão (refresh token).
+>
+> Até que essa pendência seja implementada no Agente, a execução ponta a ponta integrada depende de `AUTH_PROVIDER=fake` ou de tokens obtidos manualmente como exemplificado acima.
 
 ### Corpo da requisição (Envelope)
 
