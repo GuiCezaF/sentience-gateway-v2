@@ -3,9 +3,6 @@ const CNPJ_REGEX = /^[A-Z0-9]{12}[0-9]{2}$/;
 const DV1_WEIGHTS = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
 const DV2_WEIGHTS = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
 
-/**
- * Remove pontuações comuns de CNPJ (. / -) e espaços, retornando em caixa alta.
- */
 export function sanitizeCnpj(rawCnpj: string): string {
   return rawCnpj.replace(/[./\-\s]/g, '').toUpperCase();
 }
@@ -29,7 +26,6 @@ export function isValidCnpj(rawCnpj: string | null | undefined): boolean {
     return false;
   }
 
-  // Rejeita sequências de 14 caracteres idênticos (ex: 00000000000000, AAAAAAAAAAAAAA)
   if (/^([A-Z0-9])\1{13}$/.test(cleaned)) {
     return false;
   }

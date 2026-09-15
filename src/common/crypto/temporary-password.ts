@@ -5,10 +5,6 @@ const LOWERCASE = 'abcdefghijklmnopqrstuvwxyz';
 const DIGITS = '0123456789';
 const ALL_CHARS = UPPERCASE + LOWERCASE + DIGITS;
 
-/**
- * Gera uma senha temporária alfanumérica segura com o comprimento solicitado (padrão 10).
- * Garante a presença de pelo menos uma letra maiúscula, uma minúscula e um dígito.
- */
 export function generateTemporaryPassword(length = 10): string {
   if (length < 3) {
     throw new Error('Password length must be at least 3');

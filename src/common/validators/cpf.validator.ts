@@ -1,20 +1,14 @@
-/**
- * Valida um CPF (Cadastro de Pessoas Físicas) com 11 dígitos numéricos
- * utilizando o algoritmo oficial do Módulo 11.
- */
 export function isValidCpf(rawCpf: string | null | undefined): boolean {
   if (!rawCpf || typeof rawCpf !== 'string') {
     return false;
   }
 
-  // Remove caracteres de pontuação comuns (. e -) e espaços
   const cleaned = rawCpf.replace(/\D/g, '');
 
   if (cleaned.length !== 11) {
     return false;
   }
 
-  // Rejeita sequências de dígitos idênticos (ex: 00000000000, 11111111111)
   if (/^(\d)\1{10}$/.test(cleaned)) {
     return false;
   }
@@ -45,9 +39,6 @@ export function isValidCpf(rawCpf: string | null | undefined): boolean {
   return digits[10] === dv2;
 }
 
-/**
- * Remove formatação de CPF retornando apenas os 11 dígitos numéricos.
- */
 export function sanitizeCpf(rawCpf: string): string {
   return rawCpf.replace(/\D/g, '');
 }
