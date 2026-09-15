@@ -11,6 +11,7 @@ export function configuredEnv(app: INestApplication): Env {
     DATABASE_URL: config.get('DATABASE_URL'),
     DB_SCHEMA: config.get('DB_SCHEMA'),
     SUPABASE_URL: config.get('SUPABASE_URL'),
+    SUPABASE_SERVICE_ROLE_KEY: config.get('SUPABASE_SERVICE_ROLE_KEY'),
     MAX_SYNC_ITEMS: config.get('MAX_SYNC_ITEMS'),
     BODY_LIMIT: config.get('BODY_LIMIT'),
   };

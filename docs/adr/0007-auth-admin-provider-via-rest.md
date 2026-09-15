@@ -1,0 +1,3 @@
+# Operações admin de auth via REST, não supabase-js
+
+Precisamos criar usuários e trocar senhas no Supabase Auth a partir do gateway. Decidimos criar uma interface `AuthAdminProvider` (com métodos `createUser`, `updatePassword`, `deleteUser`) implementada com `fetch` direto na REST API do Supabase Auth (`/auth/v1/admin/users`), usando a `service_role` key. A alternativa era adicionar `supabase-js` como dependência, mas o ADR 0001 decidiu evitá-la por coupling e overhead. A interface `AuthAdminProvider` segue o mesmo padrão do `AuthProvider` existente (ADR 0002), e permite substituir o provedor no futuro sem alterar consumidores.

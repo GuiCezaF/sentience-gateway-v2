@@ -19,6 +19,7 @@ cp .env.example .env
 | `DATABASE_URL` | sim | — | URL Postgres (`postgres` ou `postgresql`). |
 | `DB_SCHEMA` | não | `gateway` | Schema dedicado (`^[a-z_][a-z0-9_]*$`). |
 | `SUPABASE_URL` | sim | — | URL do projeto Supabase (`http` ou `https`); barra final é removida. |
+| `SUPABASE_SERVICE_ROLE_KEY` | sim | — | Chave de serviço (secret/service_role) do Supabase para administração de usuários via REST. |
 | `MAX_SYNC_ITEMS` | não | `10000` | Teto de Classificações por Sincronização. |
 | `BODY_LIMIT` | não | `5mb` | Limite do body JSON (formato body-parser: `5mb`, `100kb`, …). |
 
@@ -192,6 +193,63 @@ O Agente envia em regime at-least-once: se uma requisição anterior falhou por 
 
 
 
+## Contrato da API: `/v1/companies`
+
+Gerenciamento de Empresas e seus Donos, restrito a usuários com o papel `super_admin`.
+
+### `POST /v1/companies`
+
+Cria atomicamente uma nova Empresa e seu respectivo Usuário Dono (`company_admin`).
+
+- **Autenticação**: `Bearer <token>` de um usuário com papel `super_admin`.
+- **Validação de CNPJ**: Aceita formato de 14 caracteres alfanuméricos (`12 posições [A-Z0-9] + 2 DVs [0-9]`) conforme IN RFB nº 2.229/2024 ou numérico tradicional, validado via Módulo 11 (ASCII-48).
+- **Validação de CPF**: 11 dígitos numéricos com validação oficial de Módulo 11.
+- **Domínio Corporativo**: O email do Dono obrigatoriamente deve pertencer ao `email_domain` informado. Se for diferente, retorna `422 Unprocessable Entity`.
+- **Unicidade de CNPJ**: Se o CNPJ já estiver cadastrado, retorna `409 Conflict`.
+- **Saga e Compensação**: O usuário é criado no Supabase Auth via REST API (`/auth/v1/admin/users`) com uma senha temporária segura de 10 caracteres e persistido no banco de dados local. Em caso de falha no banco, a criação no Supabase Auth é desfeita automaticamente (compensação de saga).
+
+**Corpo da requisição (`application/json`)**:
+```json
+{
+  "cnpj": "12ABC34501DE35",
+  "legal_name": "Empresa Exemplo Ltda",
+  "email_domain": "exemplo.com.br",
+  "owner": {
+    "name": "Maria Silva",
+    "email": "maria@exemplo.com.br",
+    "cpf": "52998224725"
+  }
+}
+```
+
+**Resposta `201 Created`**:
+```json
+{
+  "company": {
+    "id": "c0000000-0000-0000-0000-000000000001",
+    "cnpj": "12ABC34501DE35",
+    "legal_name": "Empresa Exemplo Ltda",
+    "email_domain": "exemplo.com.br",
+    "created_at": "2026-09-15T20:00:00.000Z"
+  },
+  "owner": {
+    "id": "u0000000-0000-0000-0000-000000000001",
+    "auth_id": "a0000000-0000-0000-0000-000000000001",
+    "name": "Maria Silva",
+    "email": "maria@exemplo.com.br",
+    "cpf": "52998224725",
+    "role": "company_admin"
+  },
+  "temporary_password": "xK9pL2mQ8w"
+}
+```
+
+### `GET /v1/companies`
+
+Lista todas as empresas cadastradas no sistema. Exige autenticação com papel `super_admin`.
+
+---
+
 ## Migrations
 
 O banco é gerenciado pelo Drizzle ORM com migrations SQL versionadas.
@@ -209,6 +267,19 @@ O banco é gerenciado pelo Drizzle ORM com migrations SQL versionadas.
 - Migrations rodam como passo explícito (`db:migrate`), nunca no boot da aplicação.
 - Para preparar o schema de testes: `DB_SCHEMA=test bun run db:migrate`
 
+## Seed
+
+Inicializa de forma idempotente a empresa sentinel ("Sentience") e o primeiro Super-admin:
+
+```bash
+bun run db:seed
+```
+
+Em ambiente de testes:
+```bash
+DB_SCHEMA=test AUTH_PROVIDER=fake bun run db:seed
+```
+
 ## Scripts
 
 | Script | O que faz |
@@ -219,6 +290,7 @@ O banco é gerenciado pelo Drizzle ORM com migrations SQL versionadas.
 | `bun run build` | Type-check (`tsc --noEmit`). Não emite `dist`. |
 | `bun run db:generate` | Gera migration SQL a partir do schema Drizzle. |
 | `bun run db:migrate` | Aplica migrations ao schema `DB_SCHEMA`. |
+| `bun run db:seed` | Inicializa empresa sentinel e super-admin de forma idempotente. |
 | `bun run test` | Testes unitários (sem rede). |
 | `bun run test:e2e` | Testes e2e. Exige `.env`. |
 | `bun run test:cov` | Unitários com cobertura. |

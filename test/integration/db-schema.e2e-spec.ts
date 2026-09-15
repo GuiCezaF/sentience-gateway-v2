@@ -9,7 +9,7 @@ import {
   DRIZZLE,
   type DrizzleDb,
 } from '../../src/db/db.module.js';
-import { syncs, classifications } from '../../src/db/schema.js';
+import { companies, users, userRoles } from '../../src/db/schema.js';
 import {
   createTestDb,
   migrateTestSchema,
@@ -52,46 +52,73 @@ describe('Database Schema & Integration Harness (e2e)', () => {
     await sql.end();
   });
 
-  it('cria syncs e classifications no schema "test" com RLS habilitada', async () => {
+  it('cria todas as tabelas no schema "test" com RLS habilitada', async () => {
     const rows = await sql.unsafe<
       { tablename: string; rowsecurity: boolean }[]
     >(
       `SELECT tablename, rowsecurity
        FROM pg_tables
        WHERE schemaname = '${TEST_SCHEMA}'
-         AND tablename IN ('syncs', 'classifications')
+         AND tablename IN ('syncs', 'classifications', 'companies', 'users', 'user_roles')
        ORDER BY tablename`,
     );
 
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(5);
     expect(rows).toEqual([
       { tablename: 'classifications', rowsecurity: true },
+      { tablename: 'companies', rowsecurity: true },
       { tablename: 'syncs', rowsecurity: true },
+      { tablename: 'user_roles', rowsecurity: true },
+      { tablename: 'users', rowsecurity: true },
     ]);
   });
 
-  it('não cria syncs nem classifications no schema public', async () => {
+  it('não cria as tabelas do gateway no schema public', async () => {
     const rows = await sql.unsafe<{ tablename: string }[]>(
       `SELECT tablename
        FROM pg_tables
        WHERE schemaname = 'public'
-         AND tablename IN ('syncs', 'classifications')`,
+         AND tablename IN ('syncs', 'classifications', 'companies', 'users', 'user_roles')`,
     );
 
     expect(rows).toHaveLength(0);
   });
 
-  it('classifications.sync_id referencia syncs.id com ON DELETE RESTRICT', async () => {
-    const fks = await sql.unsafe<{ conname: string; confdeltype: string }[]>(
-      `SELECT conname, confdeltype
-       FROM pg_constraint
-       WHERE conrelid = '${TEST_SCHEMA}.classifications'::regclass
-         AND contype = 'f'`,
+  it('garante chaves estrangeiras com ações corretas', async () => {
+    const fks = await sql.unsafe<
+      { conname: string; confdeltype: string; relname: string }[]
+    >(
+      `SELECT c.conname, c.confdeltype, cl.relname
+       FROM pg_constraint c
+       JOIN pg_class cl ON cl.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = cl.relnamespace
+       WHERE n.nspname = '${TEST_SCHEMA}'
+         AND c.contype = 'f'
+       ORDER BY c.conname`,
     );
 
-    expect(fks).toHaveLength(1);
-    expect(fks[0].conname).toBe('classifications_sync_id_syncs_id_fk');
-    expect(fks[0].confdeltype).toBe('r'); // 'r' = RESTRICT
+    const fkMap = new Map(fks.map((f) => [f.conname, f.confdeltype]));
+    expect(fkMap.get('classifications_sync_id_syncs_id_fk')).toBe('r'); // RESTRICT
+    expect(fkMap.get('users_company_id_companies_id_fk')).toBe('r'); // RESTRICT
+    expect(fkMap.get('user_roles_user_id_users_id_fk')).toBe('c'); // CASCADE
+  });
+
+  it('possui restrições de unicidade UNIQUE(cnpj) e UNIQUE(company_id, cpf)', async () => {
+    const uniques = await sql.unsafe<{ conname: string }[]>(
+      `SELECT c.conname
+       FROM pg_constraint c
+       JOIN pg_class cl ON cl.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = cl.relnamespace
+       WHERE n.nspname = '${TEST_SCHEMA}'
+         AND c.contype = 'u'
+       ORDER BY c.conname`,
+    );
+
+    const conNames = uniques.map((u) => u.conname);
+    expect(conNames).toContain('companies_cnpj_unique');
+    expect(conNames).toContain('users_company_cpf_unique');
+    expect(conNames).toContain('users_auth_id_unique');
+    expect(conNames).toContain('user_roles_user_role_unique');
   });
 
   it('possui os índices esperados para performance de consultas', async () => {
@@ -99,61 +126,78 @@ describe('Database Schema & Integration Harness (e2e)', () => {
       `SELECT indexname
        FROM pg_indexes
        WHERE schemaname = '${TEST_SCHEMA}'
-         AND tablename IN ('syncs', 'classifications')
+         AND tablename IN ('syncs', 'classifications', 'companies', 'users', 'user_roles')
        ORDER BY indexname`,
     );
 
     const indexNames = indexes.map((i) => i.indexname);
     expect(indexNames).toContain('syncs_user_received_idx');
     expect(indexNames).toContain('classifications_user_occurred_idx');
+    expect(indexNames).toContain('companies_cnpj_idx');
+    expect(indexNames).toContain('users_company_id_idx');
+    expect(indexNames).toContain('users_auth_id_idx');
+    expect(indexNames).toContain('user_roles_user_id_idx');
   });
 
-  it('fornece client postgres.js e Drizzle por DI no NestJS e permite operações no schema configurado', async () => {
+  it('permite persistência relacional de empresa, usuário e papéis via Drizzle', async () => {
     expect(injectedSql).toBeDefined();
     expect(injectedDrizzle).toBeDefined();
 
-    const [sync] = await injectedDrizzle
-      .insert(syncs)
+    const [company] = await injectedDrizzle
+      .insert(companies)
       .values({
-        userId: 'a0000000-0000-0000-0000-000000000001',
-        subjectId: 'sub-1',
-        sentAt: new Date(),
-        health: 'ok',
-        receivedCount: 1,
-        insertedCount: 1,
-        duplicateCount: 0,
+        cnpj: '12ABC34501DE35',
+        legalName: 'Acme Corp Ltda',
+        emailDomain: 'acme.com.br',
       })
       .returning();
 
-    expect(sync.id).toBeDefined();
-    expect(sync.health).toBe('ok');
+    expect(company.id).toBeDefined();
+    expect(company.cnpj).toBe('12ABC34501DE35');
 
-    const [classification] = await injectedDrizzle
-      .insert(classifications)
+    const [user] = await injectedDrizzle
+      .insert(users)
       .values({
-        userId: 'a0000000-0000-0000-0000-000000000001',
-        classificationId: 'b0000000-0000-0000-0000-000000000001',
-        syncId: sync.id,
-        occurredAt: new Date(),
-        emotion: 'happy',
+        authId: 'c0000000-0000-0000-0000-000000000001',
+        companyId: company.id,
+        name: 'Maria Silva',
+        email: 'maria@acme.com.br',
+        cpf: '52998224725',
+        status: 'active',
+        mustChangePassword: true,
       })
       .returning();
 
-    expect(classification.classificationId).toBe(
-      'b0000000-0000-0000-0000-000000000001',
-    );
-    expect(classification.syncId).toBe(sync.id);
+    expect(user.id).toBeDefined();
+    expect(user.companyId).toBe(company.id);
 
-    const selectedSyncs = await injectedDrizzle.select().from(syncs);
-    expect(selectedSyncs).toHaveLength(1);
-    expect(selectedSyncs[0].id).toBe(sync.id);
+    const [role] = await injectedDrizzle
+      .insert(userRoles)
+      .values({
+        userId: user.id,
+        role: 'company_admin',
+      })
+      .returning();
+
+    expect(role.id).toBeDefined();
+    expect(role.role).toBe('company_admin');
+
+    const selectedCompanies = await injectedDrizzle.select().from(companies);
+    expect(selectedCompanies).toHaveLength(1);
+    const selectedUsers = await injectedDrizzle.select().from(users);
+    expect(selectedUsers).toHaveLength(1);
+    const selectedRoles = await injectedDrizzle.select().from(userRoles);
+    expect(selectedRoles).toHaveLength(1);
   });
 
   it('limpa os dados entre testes com truncateAll', async () => {
-    const existingSyncs = await db.select().from(syncs);
-    expect(existingSyncs).toHaveLength(0);
+    const existingCompanies = await db.select().from(companies);
+    expect(existingCompanies).toHaveLength(0);
 
-    const existingClassifications = await db.select().from(classifications);
-    expect(existingClassifications).toHaveLength(0);
+    const existingUsers = await db.select().from(users);
+    expect(existingUsers).toHaveLength(0);
+
+    const existingRoles = await db.select().from(userRoles);
+    expect(existingRoles).toHaveLength(0);
   });
 });

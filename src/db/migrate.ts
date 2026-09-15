@@ -51,6 +51,15 @@ export async function runMigrations(
     await sql.unsafe(
       `ALTER TABLE "${targetSchema}"."classifications" ENABLE ROW LEVEL SECURITY`,
     );
+    await sql.unsafe(
+      `ALTER TABLE "${targetSchema}"."companies" ENABLE ROW LEVEL SECURITY`,
+    );
+    await sql.unsafe(
+      `ALTER TABLE "${targetSchema}"."users" ENABLE ROW LEVEL SECURITY`,
+    );
+    await sql.unsafe(
+      `ALTER TABLE "${targetSchema}"."user_roles" ENABLE ROW LEVEL SECURITY`,
+    );
 
     console.log(
       `✅ Migrations applied successfully to schema "${targetSchema}"`,

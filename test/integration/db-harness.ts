@@ -36,6 +36,6 @@ export async function migrateTestSchema(): Promise<void> {
 
 export async function truncateAll(sql: postgres.Sql): Promise<void> {
   await sql.unsafe(
-    `TRUNCATE "${TEST_SCHEMA}"."classifications", "${TEST_SCHEMA}"."syncs" CASCADE;`,
+    `TRUNCATE "${TEST_SCHEMA}"."user_roles", "${TEST_SCHEMA}"."users", "${TEST_SCHEMA}"."companies", "${TEST_SCHEMA}"."classifications", "${TEST_SCHEMA}"."syncs" CASCADE;`,
   );
 }

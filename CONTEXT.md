@@ -11,7 +11,7 @@ O Sentience App: instância de bandeja que classifica expressão facial localmen
 _Avoid_: cliente, front-end, app desktop, dispositivo
 
 **Usuário**:
-Pessoa autenticada pela credencial que acompanha cada Sincronização; dona de tudo que o Gateway guarda.
+Pessoa autenticada pela credencial que acompanha cada Sincronização; dona de tudo que o Gateway guarda. Pertence a exatamente uma Empresa. Identidade vive no Supabase Auth; perfil de negócio (nome, CPF, Papel) vive no banco local.
 _Avoid_: conta, account, sujeito
 
 **Instalação**:
@@ -57,3 +57,43 @@ _Avoid_: conflito, erro de duplicidade, replay
 **Relatório**:
 Visão do dia seguinte gerada a partir do que o Gateway guarda. Consumidor futuro; fora do escopo atual.
 _Avoid_: dashboard, analytics, histórico
+
+### Organização
+
+**Empresa**:
+Entidade jurídica que contrata o Sentience e à qual os Usuários pertencem. Identificada por CNPJ (único no sistema) e restringe emails ao seu domínio corporativo.
+_Avoid_: organização, tenant, cliente (como sinônimo de empresa), conta corporativa
+
+**CNPJ**:
+Identificador fiscal da Empresa, 14 caracteres alfanuméricos (12 posições base em `[A-Z0-9]` + 2 dígitos verificadores numéricos). Validado por módulo 11 com conversão ASCII-48. Compatível com o formato alfanumérico vigente desde julho/2026.
+_Avoid_: registro, inscrição, código da empresa
+
+**CPF**:
+Identificador fiscal da pessoa física, 11 dígitos numéricos com 2 dígitos verificadores (módulo 11). Único por Empresa no sistema. Não é alfanumérico — apenas o CNPJ mudou de formato.
+_Avoid_: documento, identidade, RG
+
+**Domínio Corporativo**:
+Domínio de email associado à Empresa (ex: `acme.com.br`). Todo Usuário da Empresa deve ter email nesse domínio.
+_Avoid_: domínio de email, email domain (como termo solto)
+
+### Acesso e Papéis
+
+**Papel**:
+Nível de permissão de um Usuário no sistema. Armazenado no banco local (tabela `user_roles`), não no Supabase Auth. Valores no MVP: `super_admin`, `company_admin`, `user`.
+_Avoid_: role, permissão, nível de acesso
+
+**Super-admin**:
+Papel que permite criar Empresas e seus Donos. Pertence à Empresa sentinel (Sentience).
+_Avoid_: root, system admin, god mode
+
+**Dono da Empresa**:
+Usuário com Papel `company_admin` criado atomicamente junto com a Empresa. Recebe Senha Temporária e cadastra os demais Usuários.
+_Avoid_: owner, proprietário, administrador (como termo genérico)
+
+**Senha Temporária**:
+Senha alfanumérica curta (8-12 caracteres) gerada automaticamente no Cadastro. O Usuário é obrigado a trocá-la no primeiro acesso. Comunicada manualmente pelo RH ou admin.
+_Avoid_: senha provisória, one-time password, OTP
+
+**Cadastro**:
+Ato de criar um Usuário no sistema: gera identidade no Supabase Auth (com Senha Temporária), insere perfil no banco local, e atribui Papel. Executado por um `super_admin` (para Donos) ou `company_admin` (para Usuários comuns).
+_Avoid_: registro, signup, onboarding

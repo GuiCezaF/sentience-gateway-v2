@@ -13,6 +13,7 @@ const envSchema = z.object({
   SUPABASE_URL: z
     .url({ protocol: /^https?$/ })
     .transform((url) => url.replace(/\/$/, '')),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   MAX_SYNC_ITEMS: z.coerce.number().int().positive().default(10000),
   BODY_LIMIT: z
     .string()
