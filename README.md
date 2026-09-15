@@ -34,6 +34,66 @@ bun run start:dev
 
 Liveness: `GET /healthz` → `{"status":"ok"}` (fora do prefixo `/v1`, sem acesso ao banco).
 
+## Contrato da API: `POST /v1/syncs`
+
+Recebe Sincronizações enviadas pelo Agente, autentica o Usuário via `AuthProvider` e registra os dados em banco.
+
+### Headers
+
+| Header | Obrigatório | Formato / Descrição |
+| --- | --- | --- |
+| `Authorization` | sim | `Bearer <token>`. Em desenvolvimento local com `AUTH_PROVIDER=fake` ou testes: `Bearer user:<uuid>`. |
+| `Content-Type` | sim | `application/json` |
+
+### Corpo da requisição (Envelope)
+
+| Campo | Tipo | Obrigatório | Descrição |
+| --- | --- | --- | --- |
+| `subject_id` | string (1–128) | sim | Identificador opaco da Instalação do Agente. |
+| `sent_at` | string (ISO UTC com `Z`) | sim | Instante do envio (ex: `2026-09-15T20:00:00.000Z`). Offsets numéricos (como `+00:00`) são rejeitados. |
+| `health` | string | sim | Condição operacional da Instalação: `ok`, `camera` ou `model`. |
+| `items` | array | sim | Lista de Classificações (máximo: `MAX_SYNC_ITEMS`, padrão 10 000). Vazio no caso de Pulso. |
+
+#### Item (`items[]`)
+
+| Campo | Tipo | Obrigatório | Descrição |
+| --- | --- | --- | --- |
+| `classification_id` | string (UUID) | sim | Identificador único da Classificação. |
+| `occurred_at` | string (ISO UTC com `Z`) | sim | Instante em que a expressão ocorreu. Offsets numéricos são rejeitados. |
+| `emotion` | string | sim | Emoção reconhecida: `angry`, `happy`, `neutral` ou `sad`. |
+
+### Respostas e Códigos HTTP
+
+- **`201 Created`**: Sincronização aceita e registrada. Devolve o recibo:
+  ```json
+  {
+    "syncId": "s0000000-0000-0000-0000-000000000001",
+    "health": "ok",
+    "receivedCount": 0,
+    "insertedCount": 0,
+    "duplicateCount": 0
+  }
+  ```
+- **`400 Bad Request`**: Envelope ou itens inválidos (ex: data sem `Z`, UUID malformado, emoção/saúde desconhecida, teto de itens excedido). Retorna `{ statusCode: 400, message: "Validation failed", issues: [...] }`.
+- **`401 Unauthorized`**: Header `Authorization` ausente, malformado ou recusado pelo `AuthProvider`. Nenhuma operação é feita no banco.
+
+### Exemplo: Pulso
+
+Um Pulso é uma Sincronização sem Classificações (`items: []`), indicando que o Agente está ativo e reportando a Saúde da Instalação:
+
+```bash
+curl -X POST http://localhost:3000/v1/syncs \
+  -H "Authorization: Bearer user:a0000000-0000-0000-0000-000000000001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject_id": "inst-123",
+    "sent_at": "2026-09-15T20:00:00.000Z",
+    "health": "ok",
+    "items": []
+  }'
+```
+
+
 ## Migrations
 
 O banco é gerenciado pelo Drizzle ORM com migrations SQL versionadas.
