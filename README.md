@@ -34,6 +34,23 @@ bun run start:dev
 
 Liveness: `GET /healthz` → `{"status":"ok"}` (fora do prefixo `/v1`, sem acesso ao banco).
 
+## Migrations
+
+O banco é gerenciado pelo Drizzle ORM com migrations SQL versionadas.
+
+### Fluxo: alterar o schema
+
+1. Edite as tabelas em `src/db/schema.ts`
+2. Gere a migration: `bun run db:generate`
+3. Aplique ao banco: `bun run db:migrate`
+
+### Regras
+
+- **Nunca edite tabelas pelo dashboard do Supabase.** Toda alteração passa pelo Drizzle e por migrations versionadas.
+- O schema Postgres usado é definido por `DB_SCHEMA` (default: `gateway`).
+- Migrations rodam como passo explícito (`db:migrate`), nunca no boot da aplicação.
+- Para preparar o schema de testes: `DB_SCHEMA=test bun run db:migrate`
+
 ## Scripts
 
 | Script | O que faz |
@@ -42,8 +59,11 @@ Liveness: `GET /healthz` → `{"status":"ok"}` (fora do prefixo `/v1`, sem acess
 | `bun run start:dev` | Sobe com reload (`bun --watch`). |
 | `bun run start:debug` | Sobe com inspector e reload. |
 | `bun run build` | Type-check (`tsc --noEmit`). Não emite `dist`. |
+| `bun run db:generate` | Gera migration SQL a partir do schema Drizzle. |
+| `bun run db:migrate` | Aplica migrations ao schema `DB_SCHEMA`. |
 | `bun run test` | Testes unitários (sem rede). |
 | `bun run test:e2e` | Testes e2e. Exige `.env`. |
 | `bun run test:cov` | Unitários com cobertura. |
 | `bun run lint` | Oxlint em `src/` e `test/`. |
 | `bun run format` | Prettier em `src/` e `test/`. |
+
