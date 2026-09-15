@@ -3,7 +3,6 @@ import { ConfigModule } from '@nestjs/config';
 import { parseEnv } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({
