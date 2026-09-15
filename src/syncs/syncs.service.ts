@@ -1,11 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../db/db.module.js';
-import { syncs } from '../db/schema.js';
+import { classifications, syncs } from '../db/schema.js';
+import { chunk } from '../common/chunk.js';
 import type { AuthUser } from '../auth/auth-provider.interface.js';
 import type {
   SyncEnvelopeDto,
   SyncReceiptDto,
 } from './dto/sync-envelope.dto.js';
+
+export const CLASSIFICATION_CHUNK_SIZE = 1000;
 
 @Injectable()
 export class SyncsService {
@@ -20,8 +24,8 @@ export class SyncsService {
     user: AuthUser,
     envelope: SyncEnvelopeDto,
   ): Promise<SyncReceiptDto> {
-    const [insertedSync] = await this.db.transaction(async (tx) => {
-      return tx
+    const updatedSync = await this.db.transaction(async (tx) => {
+      const [insertedSync] = await tx
         .insert(syncs)
         .values({
           userId: user.userId,
@@ -33,6 +37,47 @@ export class SyncsService {
           duplicateCount: 0,
         })
         .returning();
+
+      if (envelope.items.length === 0) {
+        return insertedSync;
+      }
+
+      let insertedCount = 0;
+      const batches = chunk(envelope.items, CLASSIFICATION_CHUNK_SIZE);
+
+      for (const batch of batches) {
+        const insertedRows = await tx
+          .insert(classifications)
+          .values(
+            batch.map((item) => ({
+              userId: user.userId,
+              classificationId: item.classification_id,
+              syncId: insertedSync.id,
+              subjectId: envelope.subject_id,
+              occurredAt: new Date(item.occurred_at),
+              emotion: item.emotion,
+            })),
+          )
+          .onConflictDoNothing({
+            target: [classifications.userId, classifications.classificationId],
+          })
+          .returning({ classificationId: classifications.classificationId });
+
+        insertedCount += insertedRows.length;
+      }
+
+      const duplicateCount = envelope.items.length - insertedCount;
+
+      const [updated] = await tx
+        .update(syncs)
+        .set({
+          insertedCount,
+          duplicateCount,
+        })
+        .where(eq(syncs.id, insertedSync.id))
+        .returning();
+
+      return updated;
     });
 
     if (envelope.health !== 'ok') {
@@ -46,11 +91,11 @@ export class SyncsService {
     }
 
     return {
-      syncId: insertedSync.id,
-      health: insertedSync.health,
-      receivedCount: insertedSync.receivedCount,
-      insertedCount: insertedSync.insertedCount,
-      duplicateCount: insertedSync.duplicateCount,
+      syncId: updatedSync.id,
+      health: updatedSync.health,
+      receivedCount: updatedSync.receivedCount,
+      insertedCount: updatedSync.insertedCount,
+      duplicateCount: updatedSync.duplicateCount,
     };
   }
 }

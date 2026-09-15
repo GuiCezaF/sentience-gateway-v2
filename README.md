@@ -76,6 +76,7 @@ Recebe Sincronizações enviadas pelo Agente, autentica o Usuário via `AuthProv
   ```
 - **`400 Bad Request`**: Envelope ou itens inválidos (ex: data sem `Z`, UUID malformado, emoção/saúde desconhecida, teto de itens excedido). Retorna `{ statusCode: 400, message: "Validation failed", issues: [...] }`.
 - **`401 Unauthorized`**: Header `Authorization` ausente, malformado ou recusado pelo `AuthProvider`. Nenhuma operação é feita no banco.
+- **`413 Payload Too Large`**: Corpo da requisição excede o limite configurado em `BODY_LIMIT` (padrão 5 MB).
 
 ### Exemplo: Pulso
 
@@ -92,6 +93,60 @@ curl -X POST http://localhost:3000/v1/syncs \
     "items": []
   }'
 ```
+
+### Exemplo: Lote
+
+Uma Sincronização com Classificações reconhecidas pelo Agente:
+
+```bash
+curl -X POST http://localhost:3000/v1/syncs \
+  -H "Authorization: Bearer user:a0000000-0000-0000-0000-000000000001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject_id": "inst-123",
+    "sent_at": "2026-09-15T20:00:00.000Z",
+    "health": "ok",
+    "items": [
+      {
+        "classification_id": "b0000000-0000-4000-8000-000000000001",
+        "occurred_at": "2026-09-15T19:59:30.000Z",
+        "emotion": "happy"
+      },
+      {
+        "classification_id": "b0000000-0000-4000-8000-000000000002",
+        "occurred_at": "2026-09-15T19:59:45.000Z",
+        "emotion": "neutral"
+      }
+    ]
+  }'
+```
+
+Resposta 201:
+```json
+{
+  "syncId": "s0000000-0000-0000-0000-000000000001",
+  "health": "ok",
+  "receivedCount": 2,
+  "insertedCount": 2,
+  "duplicateCount": 0
+}
+```
+
+### Duplicatas e Idempotência (ADR 0003)
+
+O Agente envia em regime at-least-once: se uma requisição anterior falhou por timeout ou rede, o Agente reenviará o Lote na tentativa seguinte com um novo `sent_at`. O Gateway garante unicidade por `(user_id, classification_id)`. Quando recebe uma Classificação já gravada:
+- A linha existente não é alterada nem sobrescrita.
+- A Classificação repetida é contabilizada em `duplicateCount`.
+- O Gateway responde **`201 Created`**, nunca erro (evita que a fila do Agente trave).
+- Duplicatas dentro do mesmo Lote (`items[]` com o mesmo `classification_id`) também são absorvidas silenciosamente e contadas em `duplicateCount`.
+
+### Limites e Datas
+
+- **Teto de Classificações (`MAX_SYNC_ITEMS`)**: padrão 10 000 itens. Se excedido, o Gateway responde `400 Bad Request` sem gravar nada no banco.
+- **Tamanho do corpo (`BODY_LIMIT`)**: padrão 5 MB. Se excedido, o Gateway responde `413 Payload Too Large`.
+- **Sem validação semântica de datas**: `sent_at` no futuro ou `occurred_at > sent_at` são aceitos. Relógios de desktop desajustados não podem impedir a sincronização de dados.
+- **Evolução de Emoções**: `emotion` é validada como enum no contrato Zod e persistida como `text` no banco. Uma nova Emoção entra **primeiro** no Gateway e só depois no Agente, sem exigir migration no banco.
+
 
 
 ## Migrations
