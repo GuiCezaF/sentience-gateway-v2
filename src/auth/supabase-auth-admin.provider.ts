@@ -115,16 +115,26 @@ export class SupabaseAuthAdminProvider implements AuthAdminProvider {
     }
   }
 
-  async verifyCredentials(email: string, password: string): Promise<boolean> {
+  async verifyCredentials(
+    email: string,
+    password: string,
+    clientIp?: string,
+  ): Promise<boolean> {
     const url = `${this.baseUrl}/auth/v1/token?grant_type=password`;
     const body = { email, password };
 
+    const headers: Record<string, string> = {
+      apikey: this.serviceRoleKey,
+      'Content-Type': 'application/json',
+    };
+
+    if (clientIp) {
+      headers['X-Forwarded-For'] = clientIp;
+    }
+
     const response = await this.fetchFn(url, {
       method: 'POST',
-      headers: {
-        apikey: this.serviceRoleKey,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(body),
     });
 

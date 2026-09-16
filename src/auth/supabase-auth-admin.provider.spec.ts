@@ -242,6 +242,43 @@ describe('SupabaseAuthAdminProvider', () => {
 
       expect(isValid).toBe(false);
     });
+
+    it('repassa cabeçalho X-Forwarded-For quando clientIp é informado', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'fake-jwt' }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      const isValid = await provider.verifyCredentials(
+        'user@example.com',
+        'validPassword123!',
+        '203.0.113.195',
+      );
+
+      expect(isValid).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://test-project.supabase.co/auth/v1/token?grant_type=password',
+        {
+          method: 'POST',
+          headers: {
+            apikey: serviceRoleKey,
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': '203.0.113.195',
+          },
+          body: JSON.stringify({
+            email: 'user@example.com',
+            password: 'validPassword123!',
+          }),
+        },
+      );
+    });
   });
 
   describe('signInWithPassword', () => {

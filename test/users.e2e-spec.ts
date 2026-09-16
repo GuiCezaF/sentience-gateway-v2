@@ -163,10 +163,11 @@ describe('Users & Password Enforcement (e2e)', () => {
       .where(eq(users.authId, ownerAuthId));
     expect(userBeforeChange[0].mustChangePassword).toBe(true);
 
-    // 5. Dono troca a senha com sucesso via PATCH /v1/users/me/password
+    // 5. Dono troca a senha com sucesso via PATCH /v1/users/me/password repassando X-Forwarded-For
     const changePasswordRes = await request(app.getHttpServer())
       .patch('/v1/users/me/password')
       .set('Authorization', `Bearer ${ownerToken}`)
+      .set('X-Forwarded-For', '203.0.113.195, 70.41.3.18')
       .send({
         currentPassword: tempPassword,
         newPassword: 'newSafePassword123!',
@@ -176,6 +177,12 @@ describe('Users & Password Enforcement (e2e)', () => {
     expect(changePasswordRes.body).toEqual({
       message: 'Password changed successfully',
     });
+
+    // Valida que o cabeçalho X-Forwarded-For foi repassado ao provedor na verificação de credenciais
+    expect(fakeAuthAdmin.verifyCredentialsCalls).toHaveLength(2);
+    expect(fakeAuthAdmin.verifyCredentialsCalls[1].clientIp).toBe(
+      '203.0.113.195',
+    );
 
     // Valida que a senha foi atualizada no provedor de autenticação
     const authRecord = fakeAuthAdmin.getUser(ownerAuthId);

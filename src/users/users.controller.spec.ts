@@ -66,6 +66,35 @@ describe('UsersController', () => {
     const result = await controller.changePassword(mockUser, dto);
 
     expect(result).toBe(expectedResult);
-    expect(mockService.changePassword).toHaveBeenCalledWith(mockUser, dto);
+    expect(mockService.changePassword).toHaveBeenCalledWith(
+      mockUser,
+      dto,
+      undefined,
+    );
+  });
+
+  it('extrai clientIp de x-forwarded-for e repassa para o UsersService', async () => {
+    const expectedResult = { message: 'Password changed successfully' };
+    vi.mocked(mockService.changePassword).mockResolvedValue(expectedResult);
+
+    const dto = {
+      currentPassword: 'oldPassword12',
+      newPassword: 'newPassword123!',
+    };
+
+    const req = {
+      headers: {
+        'x-forwarded-for': '203.0.113.195, 70.41.3.18',
+      },
+    } as any;
+
+    const result = await controller.changePassword(mockUser, dto, req);
+
+    expect(result).toBe(expectedResult);
+    expect(mockService.changePassword).toHaveBeenCalledWith(
+      mockUser,
+      dto,
+      '203.0.113.195',
+    );
   });
 });

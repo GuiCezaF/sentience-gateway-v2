@@ -129,6 +129,7 @@ describe('UsersService', () => {
       expect(mockAuthAdmin.verifyCredentials).toHaveBeenCalledWith(
         'carlos@alphacorp.com.br',
         'oldTempPassword12',
+        undefined,
       );
       expect(mockAuthAdmin.updatePassword).toHaveBeenCalledWith(
         'auth-123',
@@ -139,6 +140,32 @@ describe('UsersService', () => {
         expect.objectContaining({
           mustChangePassword: false,
         }),
+      );
+    });
+
+    it('repassa clientIp para authAdminProvider.verifyCredentials quando informado', async () => {
+      vi.mocked(mockAuthAdmin.verifyCredentials).mockResolvedValue(true);
+      vi.mocked(mockAuthAdmin.updatePassword).mockResolvedValue(undefined);
+
+      const updateBuilder = {
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([]),
+      };
+      mockDb.update.mockReturnValue(updateBuilder);
+
+      await service.changePassword(
+        mockUser,
+        {
+          currentPassword: 'oldTempPassword12',
+          newPassword: 'newPermanentPassword123!',
+        },
+        '198.51.100.22',
+      );
+
+      expect(mockAuthAdmin.verifyCredentials).toHaveBeenCalledWith(
+        'carlos@alphacorp.com.br',
+        'oldTempPassword12',
+        '198.51.100.22',
       );
     });
 

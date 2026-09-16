@@ -5,14 +5,17 @@ import {
   HttpCode,
   HttpStatus,
   Patch,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { CurrentUser } from '../auth/user.decorator.js';
 import type { AuthUser } from '../auth/auth-provider.interface.js';
 import { AllowPasswordChange } from '../auth/allow-password-change.decorator.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
+import { extractClientIp } from '../common/utils/client-ip.js';
 import { UsersService } from './users.service.js';
 import {
   type ChangePasswordDto,
@@ -38,7 +41,9 @@ export class UsersController {
   async changePassword(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(changePasswordSchema)) body: ChangePasswordDto,
+    @Req() req: Request,
   ): Promise<{ message: string }> {
-    return this.usersService.changePassword(user, body);
+    const clientIp = extractClientIp(req);
+    return this.usersService.changePassword(user, body, clientIp);
   }
 }

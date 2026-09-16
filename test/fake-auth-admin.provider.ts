@@ -20,6 +20,11 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
   public updatePasswordCalls: Array<{ id: string; password: string }> = [];
   public signInCalls: SignInWithPasswordParams[] = [];
   public refreshCalls: Array<{ refreshToken: string; clientIp?: string }> = [];
+  public verifyCredentialsCalls: Array<{
+    email: string;
+    password: string;
+    clientIp?: string;
+  }> = [];
 
   async createUser(params: CreateAdminUserParams): Promise<AdminUserResult> {
     for (const u of this.users.values()) {
@@ -57,7 +62,12 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
     }
   }
 
-  async verifyCredentials(email: string, password: string): Promise<boolean> {
+  async verifyCredentials(
+    email: string,
+    password: string,
+    clientIp?: string,
+  ): Promise<boolean> {
+    this.verifyCredentialsCalls.push({ email, password, clientIp });
     const user = this.getUserByEmail(email);
     if (!user) {
       return false;
@@ -126,5 +136,6 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
     this.updatePasswordCalls = [];
     this.signInCalls = [];
     this.refreshCalls = [];
+    this.verifyCredentialsCalls = [];
   }
 }

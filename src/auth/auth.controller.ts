@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
+import { extractClientIp } from '../common/utils/client-ip.js';
 import { AuthService } from './auth.service.js';
 import {
   loginSchema,
@@ -32,7 +33,7 @@ export class AuthController {
     @Body() body: LoginDto,
     @Req() req: Request,
   ): Promise<LoginResponse> {
-    const clientIp = this.extractClientIp(req);
+    const clientIp = extractClientIp(req);
     return this.authService.login(body, clientIp);
   }
 
@@ -43,25 +44,7 @@ export class AuthController {
     @Body() body: RefreshDto,
     @Req() req: Request,
   ): Promise<RefreshResponse> {
-    const clientIp = this.extractClientIp(req);
+    const clientIp = extractClientIp(req);
     return this.authService.refresh(body, clientIp);
-  }
-
-  private extractClientIp(req: Request): string | undefined {
-    const forwarded = req.headers['x-forwarded-for'];
-
-    if (typeof forwarded === 'string') {
-      return forwarded.split(',')[0].trim();
-    }
-    if (Array.isArray(forwarded) && forwarded.length > 0) {
-      return forwarded[0].trim();
-    }
-    if (req.ip) {
-      return req.ip;
-    }
-    if (req.socket?.remoteAddress) {
-      return req.socket.remoteAddress;
-    }
-    return undefined;
   }
 }

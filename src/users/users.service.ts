@@ -83,10 +83,12 @@ export class UsersService {
   async changePassword(
     user: AuthUser,
     dto: ChangePasswordDto,
+    clientIp?: string,
   ): Promise<{ message: string }> {
     const isValid = await this.authAdminProvider.verifyCredentials(
       user.email,
       dto.currentPassword,
+      clientIp,
     );
 
     if (!isValid) {

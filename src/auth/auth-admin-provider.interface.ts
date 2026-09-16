@@ -28,7 +28,11 @@ export interface AuthAdminProvider {
   createUser(params: CreateAdminUserParams): Promise<AdminUserResult>;
   deleteUser(id: string): Promise<void>;
   updatePassword(id: string, newPassword: string): Promise<void>;
-  verifyCredentials(email: string, password: string): Promise<boolean>;
+  verifyCredentials(
+    email: string,
+    password: string,
+    clientIp?: string,
+  ): Promise<boolean>;
   signInWithPassword(
     params: SignInWithPasswordParams,
   ): Promise<AuthSessionResult | null>;

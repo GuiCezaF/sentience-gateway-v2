@@ -18,6 +18,7 @@ export function configuredEnv(app: INestApplication): Env {
 }
 
 export function configureApp(app: NestExpressApplication, env: Env): void {
+  app.set('trust proxy', true);
   app.useBodyParser('json', { limit: env.BODY_LIMIT });
   app.setGlobalPrefix('v1', { exclude: ['healthz'] });
 }

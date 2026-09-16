@@ -44,20 +44,21 @@ Recebe Sincronizações enviadas pelo Agente, autentica o Usuário via `AuthProv
 
 | Header | Obrigatório | Formato / Descrição |
 | --- | --- | --- |
-| `Authorization` | sim | `Bearer <token>`. Padrão: access token emitido pelo Supabase Auth (JWT ES256). Em testes e desenvolvimento local com `AUTH_PROVIDER=fake`: `Bearer user:<uuid>`. |
+| `Authorization` | sim | `Bearer <token>`. Padrão: access token emitido pelo Supabase Auth (JWT ES256) obtido via `POST /v1/auth/login`. Em testes e desenvolvimento local com `AUTH_PROVIDER=fake`: `Bearer user:<uuid>`. |
 | `Content-Type` | sim | `application/json` |
 
-### Autenticação Real com Supabase Auth (ADR 0002)
+### Autenticação Real com Supabase Auth (ADR 0002 e ADR 0009)
 
 O Gateway valida access tokens do Supabase Auth localmente contra o endpoint JWKS (`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`), exigindo assinatura assimétrica ES256, issuer `${SUPABASE_URL}/auth/v1` e audience `authenticated`. O `user_id` associado às Sincronizações e Classificações é extraído do claim `sub`.
 
-#### Verificação manual com usuário real do Supabase
+Conforme o [ADR 0009](docs/adr/0009-autenticacao-centralizada-no-gateway.md), clientes nunca devem conhecer nem acessar diretamente a infraestrutura ou credenciais do Supabase (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`). O Gateway é a porta de entrada única de autenticação (BFF).
 
-1. Obtenha um access token via REST API de Auth do projeto Supabase (com as credenciais de um usuário de teste criado no Supabase Auth):
+#### Verificação manual com usuário real
+
+1. Obtenha um access token autenticando-se diretamente na API do Gateway:
 
 ```bash
-curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
-  -H "apikey: ${SUPABASE_ANON_KEY}" \
+curl -X POST http://localhost:3000/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "usuario-teste@exemplo.com",
@@ -65,13 +66,13 @@ curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
   }'
 ```
 
-A resposta conterá `access_token` e o objeto de usuário com o `id` (`sub`).
+A resposta conterá `accessToken`, `refreshToken`, `tokenType`, `expiresIn` e o perfil do usuário em `camelCase`.
 
-2. Envie um Pulso para o Gateway com o token real:
+2. Envie um Pulso para o Gateway com o token obtido:
 
 ```bash
 curl -X POST http://localhost:3000/v1/syncs \
-  -H "Authorization: Bearer <access_token>" \
+  -H "Authorization: Bearer <accessToken>" \
   -H "Content-Type: application/json" \
   -d '{
     "subject_id": "inst-teste",
@@ -86,9 +87,9 @@ O Gateway responderá `201 Created` e registrará a Sincronização no banco com
 #### Pendência do Agente
 
 > [!NOTE]
-> O Agente (Sentience App) ainda não implementa login no Supabase Auth nem o envio do header `Authorization: Bearer <access_token>` com renovação automática de sessão (refresh token).
+> O Agente (Sentience App) ainda não implementa autenticação via Gateway (`POST /v1/auth/login`) nem o envio do header `Authorization: Bearer <accessToken>` com renovação automática de sessão via Gateway (`POST /v1/auth/refresh`).
 >
-> Até que essa pendência seja implementada no Agente, a execução ponta a ponta integrada depende de `AUTH_PROVIDER=fake` ou de tokens obtidos manualmente como exemplificado acima.
+> Até que essa pendência seja implementada no Agente, a execução ponta a ponta integrada depende de `AUTH_PROVIDER=fake` ou de tokens obtidos via Gateway (`POST /v1/auth/login`) como exemplificado acima.
 
 ### Corpo da requisição (Envelope)
 
@@ -208,6 +209,23 @@ Valida credenciais (`email` e `password`) no Supabase Auth via REST, enriquece c
 - **Bloqueio de Inativos**: Usuários com `status !== 'active'` são bloqueados com `403 Forbidden` (`{"error": "user_inactive"}`).
 - **Primeiro Acesso**: Usuários criados recentemente com `mustChangePassword: true` realizam login com sucesso (`200 OK`) e recebem seus tokens normais acompanhados da flag `mustChangePassword: true`. O Portal deve direcioná-los para a tela de primeiro acesso (`PATCH /v1/users/me/password`).
 
+**Headers**:
+| Header | Obrigatório | Descrição |
+| --- | --- | --- |
+| `Content-Type` | sim | `application/json` |
+| `X-Forwarded-For` | não | IP original do cliente repassado para auditoria no Supabase Auth. |
+
+**Exemplo de requisição**:
+```bash
+curl -X POST http://localhost:3000/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -H "X-Forwarded-For: 203.0.113.195" \
+  -d '{
+    "email": "maria@exemplo.com.br",
+    "password": "SenhaDoUsuario123!"
+  }'
+```
+
 **Corpo da requisição (`application/json`)**:
 ```json
 {
@@ -258,6 +276,22 @@ Renova a sessão do Usuário junto ao Supabase Auth a partir de um `refreshToken
 - **Rastreabilidade**: O cabeçalho `X-Forwarded-For` com o IP original do cliente é automaticamente repassado ao Supabase Auth para auditoria e controle de taxa upstream.
 - **Rejeição de Token Inválido**: Tokens de refresh inválidos, expirados ou pertencentes a usuários não registrados no banco local retornam `401 Unauthorized` (`{"statusCode": 401, "message": "Invalid or expired refresh token"}`).
 - **Bloqueio de Inativos**: Se o usuário foi desativado (`status !== 'active'`) após o login, o Gateway aborta a renovação e responde `403 Forbidden` (`{"error": "user_inactive"}`).
+
+**Headers**:
+| Header | Obrigatório | Descrição |
+| --- | --- | --- |
+| `Content-Type` | sim | `application/json` |
+| `X-Forwarded-For` | não | IP original do cliente repassado para auditoria no Supabase Auth. |
+
+**Exemplo de requisição**:
+```bash
+curl -X POST http://localhost:3000/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -H "X-Forwarded-For: 203.0.113.195" \
+  -d '{
+    "refreshToken": "refresh-token-..."
+  }'
+```
 
 **Corpo da requisição (`application/json`)**:
 ```json
@@ -515,7 +549,17 @@ curl -X POST http://localhost:3000/v1/auth/login \
     "password": "SentienceAdmin123!"
   }'
 ```
-A resposta conterá `accessToken` e o perfil do usuário em `camelCase`.
+A resposta conterá `accessToken`, `refreshToken` e o perfil do usuário em `camelCase`.
+
+#### Passo 1b: Renovar a sessão via refresh token
+```bash
+curl -X POST http://localhost:3000/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refreshToken": "<REFRESH_TOKEN>"
+  }'
+```
+A resposta conterá um novo par de `accessToken` e `refreshToken` em `camelCase`.
 
 #### Passo 2: Criar uma Empresa e seu Dono (com CNPJ alfanumérico válido)
 
