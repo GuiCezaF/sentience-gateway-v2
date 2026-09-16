@@ -20,6 +20,7 @@ describe('AuthService', () => {
       updatePassword: vi.fn(),
       verifyCredentials: vi.fn(),
       signInWithPassword: vi.fn(),
+      refreshToken: vi.fn(),
     };
     service = new AuthService(mockDb, mockAuthAdmin);
   });
@@ -250,6 +251,131 @@ describe('AuthService', () => {
         service.login({
           email: 'inactive@exemplo.com.br',
           password: 'Password123!',
+        }),
+      ).rejects.toThrow(
+        new ForbiddenException({
+          error: 'user_inactive',
+        }),
+      );
+    });
+  });
+
+  describe('refresh', () => {
+    it('renova a sessão com sucesso para usuário ativo retornando tokens camelCase', async () => {
+      vi.mocked(mockAuthAdmin.refreshToken).mockResolvedValue({
+        accessToken: 'new-mock-access-token',
+        refreshToken: 'new-mock-refresh-token',
+        tokenType: 'bearer',
+        expiresIn: 3600,
+        authId: 'auth-123',
+      });
+
+      const userSelectBuilder = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([
+          {
+            id: 'u-123',
+            authId: 'auth-123',
+            status: 'active',
+          },
+        ]),
+      };
+
+      mockDb.select.mockReturnValueOnce(userSelectBuilder);
+
+      const response = await service.refresh(
+        {
+          refreshToken: 'valid-refresh-token',
+        },
+        '10.0.0.1',
+      );
+
+      expect(mockAuthAdmin.refreshToken).toHaveBeenCalledWith(
+        'valid-refresh-token',
+        '10.0.0.1',
+      );
+
+      expect(response).toEqual({
+        accessToken: 'new-mock-access-token',
+        refreshToken: 'new-mock-refresh-token',
+        tokenType: 'bearer',
+        expiresIn: 3600,
+      });
+    });
+
+    it('lança 401 quando o provedor de auth rejeita o refresh token', async () => {
+      vi.mocked(mockAuthAdmin.refreshToken).mockResolvedValue(null);
+
+      await expect(
+        service.refresh({
+          refreshToken: 'invalid-refresh-token',
+        }),
+      ).rejects.toThrow(
+        new UnauthorizedException({
+          statusCode: 401,
+          message: 'Invalid or expired refresh token',
+        }),
+      );
+
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('lança 401 quando usuário renovou no Auth mas não existe no banco local', async () => {
+      vi.mocked(mockAuthAdmin.refreshToken).mockResolvedValue({
+        accessToken: 'new-token',
+        refreshToken: 'new-refresh',
+        tokenType: 'bearer',
+        expiresIn: 3600,
+        authId: 'orphan-auth-id',
+      });
+
+      const userSelectBuilder = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      mockDb.select.mockReturnValueOnce(userSelectBuilder);
+
+      await expect(
+        service.refresh({
+          refreshToken: 'valid-refresh-token',
+        }),
+      ).rejects.toThrow(
+        new UnauthorizedException({
+          statusCode: 401,
+          message: 'Invalid or expired refresh token',
+        }),
+      );
+    });
+
+    it('lança 403 Forbidden com { error: "user_inactive" } quando usuário está inativo no banco local', async () => {
+      vi.mocked(mockAuthAdmin.refreshToken).mockResolvedValue({
+        accessToken: 'new-token',
+        refreshToken: 'new-refresh',
+        tokenType: 'bearer',
+        expiresIn: 3600,
+        authId: 'inactive-auth-id',
+      });
+
+      const userSelectBuilder = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([
+          {
+            id: 'u-inactive',
+            authId: 'inactive-auth-id',
+            status: 'inactive',
+          },
+        ]),
+      };
+
+      mockDb.select.mockReturnValueOnce(userSelectBuilder);
+
+      await expect(
+        service.refresh({
+          refreshToken: 'valid-refresh-token',
         }),
       ).rejects.toThrow(
         new ForbiddenException({

@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { AuthController } from './auth.controller.js';
 import type { AuthService } from './auth.service.js';
 import type { LoginResponse } from './dto/login.dto.js';
+import type { RefreshResponse } from './dto/refresh.dto.js';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -34,9 +35,17 @@ describe('AuthController', () => {
     },
   };
 
+  const mockRefreshResponse: RefreshResponse = {
+    accessToken: 'new-access-token',
+    refreshToken: 'new-refresh-token',
+    tokenType: 'bearer',
+    expiresIn: 3600,
+  };
+
   beforeEach(() => {
     mockAuthService = {
       login: vi.fn().mockResolvedValue(mockLoginResponse),
+      refresh: vi.fn().mockResolvedValue(mockRefreshResponse),
     } as unknown as AuthService;
     controller = new AuthController(mockAuthService);
   });
@@ -107,6 +116,80 @@ describe('AuthController', () => {
       await controller.login(body, req);
 
       expect(mockAuthService.login).toHaveBeenCalledWith(body, '10.0.0.5');
+    });
+  });
+
+  describe('refresh', () => {
+    it('chama authService.refresh extraindo clientIp de x-forwarded-for (string separada por vírgula)', async () => {
+      const req = {
+        headers: {
+          'x-forwarded-for': '203.0.113.195, 70.41.3.18, 150.172.238.178',
+        },
+      } as unknown as Request;
+
+      const body = {
+        refreshToken: 'valid-refresh-token',
+      };
+
+      const result = await controller.refresh(body, req);
+
+      expect(mockAuthService.refresh).toHaveBeenCalledWith(
+        body,
+        '203.0.113.195',
+      );
+      expect(result).toEqual(mockRefreshResponse);
+    });
+
+    it('chama authService.refresh extraindo clientIp de x-forwarded-for (array)', async () => {
+      const req = {
+        headers: {
+          'x-forwarded-for': ['198.51.100.1'],
+        },
+      } as unknown as Request;
+
+      const body = {
+        refreshToken: 'valid-refresh-token',
+      };
+
+      await controller.refresh(body, req);
+
+      expect(mockAuthService.refresh).toHaveBeenCalledWith(
+        body,
+        '198.51.100.1',
+      );
+    });
+
+    it('chama authService.refresh com req.ip quando header x-forwarded-for está ausente', async () => {
+      const req = {
+        headers: {},
+        ip: '192.168.1.10',
+      } as unknown as Request;
+
+      const body = {
+        refreshToken: 'valid-refresh-token',
+      };
+
+      await controller.refresh(body, req);
+
+      expect(mockAuthService.refresh).toHaveBeenCalledWith(
+        body,
+        '192.168.1.10',
+      );
+    });
+
+    it('chama authService.refresh com socket.remoteAddress quando ip está ausente', async () => {
+      const req = {
+        headers: {},
+        socket: { remoteAddress: '10.0.0.5' },
+      } as unknown as Request;
+
+      const body = {
+        refreshToken: 'valid-refresh-token',
+      };
+
+      await controller.refresh(body, req);
+
+      expect(mockAuthService.refresh).toHaveBeenCalledWith(body, '10.0.0.5');
     });
   });
 });

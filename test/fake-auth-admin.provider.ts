@@ -19,6 +19,7 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
   public deleteCalls: string[] = [];
   public updatePasswordCalls: Array<{ id: string; password: string }> = [];
   public signInCalls: SignInWithPasswordParams[] = [];
+  public refreshCalls: Array<{ refreshToken: string; clientIp?: string }> = [];
 
   async createUser(params: CreateAdminUserParams): Promise<AdminUserResult> {
     for (const u of this.users.values()) {
@@ -81,6 +82,31 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
     };
   }
 
+  async refreshToken(
+    refreshToken: string,
+    clientIp?: string,
+  ): Promise<AuthSessionResult | null> {
+    this.refreshCalls.push({ refreshToken, clientIp });
+
+    if (!refreshToken.startsWith('refresh:')) {
+      return null;
+    }
+
+    const userId = refreshToken.slice('refresh:'.length);
+    const user = this.getUser(userId);
+    if (!user) {
+      return null;
+    }
+
+    return {
+      accessToken: `user:${user.id}`,
+      refreshToken: `refresh:${user.id}`,
+      tokenType: 'bearer',
+      expiresIn: 3600,
+      authId: user.id,
+    };
+  }
+
   getUser(id: string): FakeUserRecord | undefined {
     return this.users.get(id);
   }
@@ -99,5 +125,6 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
     this.deleteCalls = [];
     this.updatePasswordCalls = [];
     this.signInCalls = [];
+    this.refreshCalls = [];
   }
 }

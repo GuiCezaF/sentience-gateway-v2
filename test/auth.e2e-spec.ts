@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
+import { eq } from 'drizzle-orm';
 import { AppModule } from '../src/app.module.js';
 import { configuredEnv, configureApp } from '../src/app.setup.js';
 import { AUTH_PROVIDER } from '../src/auth/auth-provider.interface.js';
@@ -276,5 +277,130 @@ describe('Auth Login (e2e)', () => {
 
     expect(res.body.message).toBe('Validation failed');
     expect(res.body.issues).toBeDefined();
+  });
+
+  describe('POST /v1/auth/refresh', () => {
+    it('renova a sessão com sucesso retornando 200 OK e novos tokens camelCase', async () => {
+      const loginRes = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({
+          email: 'admin@sentience.internal',
+          password: 'SuperPassword123!',
+        })
+        .expect(200);
+
+      const refreshToken = loginRes.body.refreshToken;
+      expect(refreshToken).toBeDefined();
+
+      const refreshRes = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({ refreshToken })
+        .expect(200);
+
+      expect(refreshRes.body).toEqual({
+        accessToken: `user:${sentinelAuthId}`,
+        refreshToken: `refresh:${sentinelAuthId}`,
+        tokenType: 'bearer',
+        expiresIn: 3600,
+      });
+    });
+
+    it('repassa o cabeçalho X-Forwarded-For para o provedor de autenticação durante o refresh', async () => {
+      const loginRes = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({
+          email: 'admin@sentience.internal',
+          password: 'SuperPassword123!',
+        })
+        .expect(200);
+
+      const refreshToken = loginRes.body.refreshToken;
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .set('X-Forwarded-For', '203.0.113.195, 70.41.3.18')
+        .send({ refreshToken })
+        .expect(200);
+
+      expect(fakeAuthAdmin.refreshCalls).toHaveLength(1);
+      expect(fakeAuthAdmin.refreshCalls[0].clientIp).toBe('203.0.113.195');
+    });
+
+    it('rejeita token de refresh inválido ou expirado com 401 Unauthorized', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({
+          refreshToken: 'invalid-or-expired-token',
+        })
+        .expect(401);
+
+      expect(res.body).toEqual({
+        statusCode: 401,
+        message: 'Invalid or expired refresh token',
+      });
+    });
+
+    it('rejeita refresh de usuário ausente no banco local com 401 Unauthorized', async () => {
+      const orphan = await fakeAuthAdmin.createUser({
+        email: 'orphan@sentience.internal',
+        password: 'OrphanPassword123!',
+      });
+
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({
+          refreshToken: `refresh:${orphan.id}`,
+        })
+        .expect(401);
+
+      expect(res.body).toEqual({
+        statusCode: 401,
+        message: 'Invalid or expired refresh token',
+      });
+    });
+
+    it('bloqueia renovação com 403 Forbidden e payload {"error": "user_inactive"} quando o usuário foi desativado após login', async () => {
+      const loginRes = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({
+          email: 'admin@sentience.internal',
+          password: 'SuperPassword123!',
+        })
+        .expect(200);
+
+      const refreshToken = loginRes.body.refreshToken;
+
+      // Desativa o usuário no banco de dados local após o login
+      await db
+        .update(users)
+        .set({ status: 'inactive' })
+        .where(eq(users.authId, sentinelAuthId));
+
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({ refreshToken })
+        .expect(403);
+
+      expect(res.body).toEqual({
+        error: 'user_inactive',
+      });
+    });
+
+    it('rejeita payload inválido com 400 Bad Request quando refreshToken está ausente ou vazio', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({})
+        .expect(400);
+
+      expect(res.body.message).toBe('Validation failed');
+      expect(res.body.issues).toBeDefined();
+
+      const emptyRes = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({ refreshToken: '' })
+        .expect(400);
+
+      expect(emptyRes.body.message).toBe('Validation failed');
+    });
   });
 });

@@ -166,4 +166,45 @@ describe('FakeAuthAdminProvider', () => {
       expect(session).toBeNull();
     });
   });
+
+  describe('refreshToken', () => {
+    it('renova sessão com sucesso para token válido e registra clientIp', async () => {
+      const user = await provider.createUser({
+        email: 'user@acme.com',
+        password: 'password123',
+      });
+
+      const session = await provider.refreshToken(
+        `refresh:${user.id}`,
+        '10.0.0.1',
+      );
+
+      expect(session).toEqual({
+        accessToken: `user:${user.id}`,
+        refreshToken: `refresh:${user.id}`,
+        tokenType: 'bearer',
+        expiresIn: 3600,
+        authId: user.id,
+      });
+
+      expect(provider.refreshCalls).toEqual([
+        {
+          refreshToken: `refresh:${user.id}`,
+          clientIp: '10.0.0.1',
+        },
+      ]);
+    });
+
+    it('retorna null para formato de token inválido', async () => {
+      const session = await provider.refreshToken('invalid-format-token');
+      expect(session).toBeNull();
+    });
+
+    it('retorna null quando usuário do token não existe', async () => {
+      const session = await provider.refreshToken(
+        'refresh:00000000-0000-0000-0000-000000000000',
+      );
+      expect(session).toBeNull();
+    });
+  });
 });

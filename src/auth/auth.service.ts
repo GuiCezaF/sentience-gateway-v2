@@ -12,6 +12,7 @@ import {
   type AuthAdminProvider,
 } from './auth-admin-provider.interface.js';
 import type { LoginDto, LoginResponse } from './dto/login.dto.js';
+import type { RefreshDto, RefreshResponse } from './dto/refresh.dto.js';
 
 @Injectable()
 export class AuthService {
@@ -103,6 +104,50 @@ export class AuthService {
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString(),
       },
+    };
+  }
+
+  async refresh(dto: RefreshDto, clientIp?: string): Promise<RefreshResponse> {
+    const authSession = await this.authAdminProvider.refreshToken(
+      dto.refreshToken,
+      clientIp,
+    );
+
+    if (!authSession) {
+      throw new UnauthorizedException({
+        statusCode: 401,
+        message: 'Invalid or expired refresh token',
+      });
+    }
+
+    const userRows = await this.db
+      .select({
+        id: users.id,
+        authId: users.authId,
+        status: users.status,
+      })
+      .from(users)
+      .where(eq(users.authId, authSession.authId))
+      .limit(1);
+
+    if (userRows.length === 0) {
+      throw new UnauthorizedException({
+        statusCode: 401,
+        message: 'Invalid or expired refresh token',
+      });
+    }
+
+    const user = userRows[0];
+
+    if (user.status !== 'active') {
+      throw new ForbiddenException({ error: 'user_inactive' });
+    }
+
+    return {
+      accessToken: authSession.accessToken,
+      refreshToken: authSession.refreshToken,
+      tokenType: authSession.tokenType,
+      expiresIn: authSession.expiresIn,
     };
   }
 }

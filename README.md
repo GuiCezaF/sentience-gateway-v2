@@ -250,6 +250,37 @@ Valida credenciais (`email` e `password`) no Supabase Auth via REST, enriquece c
 - **`401 Unauthorized`**: Email ou senha incorretos, ou usuário não registrado no banco local. Retorna `{"statusCode": 401, "message": "Invalid email or password"}`.
 - **`403 Forbidden`**: Usuário inativo no sistema. Retorna `{"error": "user_inactive"}`.
 
+### `POST /v1/auth/refresh`
+
+Renova a sessão do Usuário junto ao Supabase Auth a partir de um `refreshToken` válido, revalida se o usuário permanece com status ativo no banco local (`gateway.users`), e retorna o novo par de tokens em padrão `camelCase`.
+
+- **Autenticação**: Pública (não exige token no header; o `refreshToken` no corpo atesta a identidade).
+- **Rastreabilidade**: O cabeçalho `X-Forwarded-For` com o IP original do cliente é automaticamente repassado ao Supabase Auth para auditoria e controle de taxa upstream.
+- **Rejeição de Token Inválido**: Tokens de refresh inválidos, expirados ou pertencentes a usuários não registrados no banco local retornam `401 Unauthorized` (`{"statusCode": 401, "message": "Invalid or expired refresh token"}`).
+- **Bloqueio de Inativos**: Se o usuário foi desativado (`status !== 'active'`) após o login, o Gateway aborta a renovação e responde `403 Forbidden` (`{"error": "user_inactive"}`).
+
+**Corpo da requisição (`application/json`)**:
+```json
+{
+  "refreshToken": "refresh-token-..."
+}
+```
+
+**Resposta `200 OK`**:
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "new-refresh-token-...",
+  "tokenType": "bearer",
+  "expiresIn": 3600
+}
+```
+
+**Respostas e Códigos de Erro**:
+- **`400 Bad Request`**: Corpo inválido (`refreshToken` ausente ou vazio). Retorna `{"statusCode": 400, "message": "Validation failed", "issues": [...]}`.
+- **`401 Unauthorized`**: Token de refresh inválido, expirado ou não encontrado. Retorna `{"statusCode": 401, "message": "Invalid or expired refresh token"}`.
+- **`403 Forbidden`**: Usuário inativo no sistema (`status !== 'active'`). Retorna `{"error": "user_inactive"}`.
+
 ---
 
 ## Contrato da API: `/v1/companies`

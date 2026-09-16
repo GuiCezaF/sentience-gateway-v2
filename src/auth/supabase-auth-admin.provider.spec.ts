@@ -379,4 +379,145 @@ describe('SupabaseAuthAdminProvider', () => {
       ).rejects.toThrow('Internal server error');
     });
   });
+
+  describe('refreshToken', () => {
+    it('retorna AuthSessionResult na renovação com sucesso (200 OK)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'new-access-jwt-token',
+          refresh_token: 'new-refresh-jwt-token',
+          token_type: 'bearer',
+          expires_in: 3600,
+          user: { id: 'auth-user-123' },
+        }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      const result = await provider.refreshToken('valid-refresh-token');
+
+      expect(result).toEqual({
+        accessToken: 'new-access-jwt-token',
+        refreshToken: 'new-refresh-jwt-token',
+        tokenType: 'bearer',
+        expiresIn: 3600,
+        authId: 'auth-user-123',
+      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://test-project.supabase.co/auth/v1/token?grant_type=refresh_token',
+        {
+          method: 'POST',
+          headers: {
+            apikey: serviceRoleKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            refresh_token: 'valid-refresh-token',
+          }),
+        },
+      );
+    });
+
+    it('repassa cabeçalho X-Forwarded-For quando clientIp é informado', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'new-access-jwt-token',
+          refresh_token: 'new-refresh-jwt-token',
+          token_type: 'bearer',
+          expires_in: 3600,
+          user: { id: 'auth-user-123' },
+        }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      await provider.refreshToken('valid-refresh-token', '192.168.1.50');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://test-project.supabase.co/auth/v1/token?grant_type=refresh_token',
+        {
+          method: 'POST',
+          headers: {
+            apikey: serviceRoleKey,
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': '192.168.1.50',
+          },
+          body: JSON.stringify({
+            refresh_token: 'valid-refresh-token',
+          }),
+        },
+      );
+    });
+
+    it('retorna null quando o Supabase Auth responde 400 (invalid_grant)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: 'invalid_grant',
+          error_description: 'Invalid Refresh Token: Refresh Token Not Found',
+        }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      const result = await provider.refreshToken('bad-refresh-token');
+
+      expect(result).toBeNull();
+    });
+
+    it('retorna null quando o Supabase Auth responde 401', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          error: 'unauthorized',
+        }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      const result = await provider.refreshToken('unauthorized-token');
+
+      expect(result).toBeNull();
+    });
+
+    it('lança erro quando ocorre erro inesperado no Supabase (status 500)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ msg: 'Internal server error' }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      await expect(provider.refreshToken('some-token')).rejects.toThrow(
+        'Internal server error',
+      );
+    });
+  });
 });

@@ -32,6 +32,10 @@ export interface AuthAdminProvider {
   signInWithPassword(
     params: SignInWithPasswordParams,
   ): Promise<AuthSessionResult | null>;
+  refreshToken(
+    refreshToken: string,
+    clientIp?: string,
+  ): Promise<AuthSessionResult | null>;
 }
 
 export const AUTH_ADMIN_PROVIDER = Symbol('AUTH_ADMIN_PROVIDER');

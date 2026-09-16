@@ -15,6 +15,11 @@ import {
   type LoginDto,
   type LoginResponse,
 } from './dto/login.dto.js';
+import {
+  refreshSchema,
+  type RefreshDto,
+  type RefreshResponse,
+} from './dto/refresh.dto.js';
 
 @Controller('auth')
 export class AuthController {
@@ -27,19 +32,36 @@ export class AuthController {
     @Body() body: LoginDto,
     @Req() req: Request,
   ): Promise<LoginResponse> {
+    const clientIp = this.extractClientIp(req);
+    return this.authService.login(body, clientIp);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @UsePipes(new ZodValidationPipe(refreshSchema))
+  async refresh(
+    @Body() body: RefreshDto,
+    @Req() req: Request,
+  ): Promise<RefreshResponse> {
+    const clientIp = this.extractClientIp(req);
+    return this.authService.refresh(body, clientIp);
+  }
+
+  private extractClientIp(req: Request): string | undefined {
     const forwarded = req.headers['x-forwarded-for'];
-    let clientIp: string | undefined;
 
     if (typeof forwarded === 'string') {
-      clientIp = forwarded.split(',')[0].trim();
-    } else if (Array.isArray(forwarded) && forwarded.length > 0) {
-      clientIp = forwarded[0].trim();
-    } else if (req.ip) {
-      clientIp = req.ip;
-    } else if (req.socket?.remoteAddress) {
-      clientIp = req.socket.remoteAddress;
+      return forwarded.split(',')[0].trim();
     }
-
-    return this.authService.login(body, clientIp);
+    if (Array.isArray(forwarded) && forwarded.length > 0) {
+      return forwarded[0].trim();
+    }
+    if (req.ip) {
+      return req.ip;
+    }
+    if (req.socket?.remoteAddress) {
+      return req.socket.remoteAddress;
+    }
+    return undefined;
   }
 }
