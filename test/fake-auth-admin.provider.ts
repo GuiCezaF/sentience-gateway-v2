@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type {
   AdminUserResult,
   AuthAdminProvider,
+  AuthSessionResult,
   CreateAdminUserParams,
+  SignInWithPasswordParams,
 } from '../src/auth/auth-admin-provider.interface.js';
 
 export interface FakeUserRecord {
@@ -16,6 +18,7 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
   public users = new Map<string, FakeUserRecord>();
   public deleteCalls: string[] = [];
   public updatePasswordCalls: Array<{ id: string; password: string }> = [];
+  public signInCalls: SignInWithPasswordParams[] = [];
 
   async createUser(params: CreateAdminUserParams): Promise<AdminUserResult> {
     for (const u of this.users.values()) {
@@ -61,6 +64,23 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
     return user.password === password;
   }
 
+  async signInWithPassword(
+    params: SignInWithPasswordParams,
+  ): Promise<AuthSessionResult | null> {
+    this.signInCalls.push(params);
+    const user = this.getUserByEmail(params.email);
+    if (!user || user.password !== params.password) {
+      return null;
+    }
+    return {
+      accessToken: `user:${user.id}`,
+      refreshToken: `refresh:${user.id}`,
+      tokenType: 'bearer',
+      expiresIn: 3600,
+      authId: user.id,
+    };
+  }
+
   getUser(id: string): FakeUserRecord | undefined {
     return this.users.get(id);
   }
@@ -78,5 +98,6 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
     this.users.clear();
     this.deleteCalls = [];
     this.updatePasswordCalls = [];
+    this.signInCalls = [];
   }
 }

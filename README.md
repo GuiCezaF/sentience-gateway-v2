@@ -192,9 +192,68 @@ O Agente envia em regime at-least-once: se uma requisição anterior falhou por 
 - **Sem validação semântica de datas**: `sent_at` no futuro ou `occurred_at > sent_at` são aceitos. Relógios de desktop desajustados não podem impedir a sincronização de dados.
 - **Evolução de Emoções**: `emotion` é validada como enum no contrato Zod e persistida como `text` no banco. Uma nova Emoção entra **primeiro** no Gateway e só depois no Agente, sem exigir migration no banco.
 
+---
 
+## Contrato da API: `/v1/auth`
+
+Ponto centralizado de autenticação no Gateway (ADR 0009). Permite que o Portal e o Agente realizem login e obtenham sessões sem conhecer a infraestrutura ou as credenciais do Supabase Auth.
+
+### `POST /v1/auth/login`
+
+Valida credenciais (`email` e `password`) no Supabase Auth via REST, enriquece com os dados locais do Usuário (`gateway.users`), Papéis (`gateway.user_roles`) e Empresa (`gateway.companies`), e retorna os tokens e o perfil de negócio em padrão `camelCase`.
+
+- **Autenticação**: Pública (não exige token).
+- **Rastreabilidade**: O cabeçalho `X-Forwarded-For` com o IP original do cliente é automaticamente repassado ao Supabase Auth para auditoria e controle de taxa upstream.
+- **Prevenção de Enumeração**: Credenciais inválidas (email inexistente, senha incorreta ou usuário sem cadastro no banco local) retornam sempre `401 Unauthorized` genérico (`{"statusCode": 401, "message": "Invalid email or password"}`).
+- **Bloqueio de Inativos**: Usuários com `status !== 'active'` são bloqueados com `403 Forbidden` (`{"error": "user_inactive"}`).
+- **Primeiro Acesso**: Usuários criados recentemente com `mustChangePassword: true` realizam login com sucesso (`200 OK`) e recebem seus tokens normais acompanhados da flag `mustChangePassword: true`. O Portal deve direcioná-los para a tela de primeiro acesso (`PATCH /v1/users/me/password`).
+
+**Corpo da requisição (`application/json`)**:
+```json
+{
+  "email": "maria@exemplo.com.br",
+  "password": "SenhaDoUsuario123!"
+}
+```
+
+**Resposta `200 OK`**:
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "refresh-token-...",
+  "tokenType": "bearer",
+  "expiresIn": 3600,
+  "user": {
+    "id": "u0000000-0000-0000-0000-000000000001",
+    "authId": "a0000000-0000-0000-0000-000000000001",
+    "companyId": "c0000000-0000-0000-0000-000000000001",
+    "name": "Maria Silva",
+    "email": "maria@exemplo.com.br",
+    "cpf": "52998224725",
+    "status": "active",
+    "mustChangePassword": false,
+    "roles": ["company_admin"],
+    "company": {
+      "id": "c0000000-0000-0000-0000-000000000001",
+      "cnpj": "12ABC34501DE35",
+      "legalName": "Empresa Exemplo Ltda",
+      "emailDomain": "exemplo.com.br"
+    },
+    "createdAt": "2026-09-15T20:00:00.000Z",
+    "updatedAt": "2026-09-15T20:00:00.000Z"
+  }
+}
+```
+
+**Respostas e Códigos de Erro**:
+- **`400 Bad Request`**: Corpo inválido (email malformado ou campos obrigatórios ausentes). Retorna `{"statusCode": 400, "message": "Validation failed", "issues": [...]}`.
+- **`401 Unauthorized`**: Email ou senha incorretos, ou usuário não registrado no banco local. Retorna `{"statusCode": 401, "message": "Invalid email or password"}`.
+- **`403 Forbidden`**: Usuário inativo no sistema. Retorna `{"error": "user_inactive"}`.
+
+---
 
 ## Contrato da API: `/v1/companies`
+
 
 Gerenciamento de Empresas e seus Donos, restrito a usuários com o papel `super_admin`.
 
@@ -402,7 +461,7 @@ bun run test
 ```
 
 ### 2. Testes End-to-End com Fakes (`test:e2e`)
-Executa 64 testes e2e contra o banco real em um schema isolado (`test`), utilizando os provedores determinísticos `FakeAuthProvider` e `FakeAuthAdminProvider`:
+Executa 72 testes e2e contra o banco real em um schema isolado (`test`), utilizando os provedores determinísticos `FakeAuthProvider` e `FakeAuthAdminProvider`:
 ```bash
 bun run test:e2e
 ```
@@ -418,14 +477,17 @@ Para validar todo o ciclo de vida da aplicação diretamente contra o Supabase A
 
 #### Passo 1: Obter o access token do super-admin
 ```bash
-curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
-  -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+curl -X POST http://localhost:3000/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "admin@sentience.internal",
     "password": "SentienceAdmin123!"
   }'
+```
+A resposta conterá `accessToken` e o perfil do usuário em `camelCase`.
+
 #### Passo 2: Criar uma Empresa e seu Dono (com CNPJ alfanumérico válido)
+
 ```bash
    curl -i -X POST http://localhost:3000/v1/companies \
      -H "Authorization: Bearer <ACCESS_TOKEN>" \

@@ -1,7 +1,9 @@
 import type {
   AdminUserResult,
   AuthAdminProvider,
+  AuthSessionResult,
   CreateAdminUserParams,
+  SignInWithPasswordParams,
 } from './auth-admin-provider.interface.js';
 
 export class SupabaseAuthAdminProvider implements AuthAdminProvider {
@@ -127,5 +129,63 @@ export class SupabaseAuthAdminProvider implements AuthAdminProvider {
     });
 
     return response.ok;
+  }
+
+  async signInWithPassword(
+    params: SignInWithPasswordParams,
+  ): Promise<AuthSessionResult | null> {
+    const url = `${this.baseUrl}/auth/v1/token?grant_type=password`;
+    const body = { email: params.email, password: params.password };
+
+    const headers: Record<string, string> = {
+      apikey: this.serviceRoleKey,
+      'Content-Type': 'application/json',
+    };
+
+    if (params.clientIp) {
+      headers['X-Forwarded-For'] = params.clientIp;
+    }
+
+    const response = await this.fetchFn(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (response.status === 400) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as {
+        msg?: string;
+        message?: string;
+        error_description?: string;
+      };
+      const message =
+        errorData.msg ||
+        errorData.message ||
+        errorData.error_description ||
+        `Supabase admin signInWithPassword failed with status ${response.status}`;
+      const err = new Error(message);
+      (err as any).status = response.status;
+      throw err;
+    }
+
+    const data = (await response.json()) as {
+      access_token: string;
+      refresh_token: string;
+      token_type?: string;
+      expires_in: number;
+      user: { id: string };
+    };
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      tokenType: data.token_type || 'bearer',
+      expiresIn: data.expires_in,
+      authId: data.user.id,
+    };
   }
 }

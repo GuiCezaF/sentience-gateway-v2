@@ -243,4 +243,140 @@ describe('SupabaseAuthAdminProvider', () => {
       expect(isValid).toBe(false);
     });
   });
+
+  describe('signInWithPassword', () => {
+    it('retorna AuthSessionResult no login com sucesso (200 OK)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'access-jwt-token',
+          refresh_token: 'refresh-jwt-token',
+          token_type: 'bearer',
+          expires_in: 3600,
+          user: { id: 'auth-user-123' },
+        }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      const result = await provider.signInWithPassword({
+        email: 'user@example.com',
+        password: 'validPassword123!',
+      });
+
+      expect(result).toEqual({
+        accessToken: 'access-jwt-token',
+        refreshToken: 'refresh-jwt-token',
+        tokenType: 'bearer',
+        expiresIn: 3600,
+        authId: 'auth-user-123',
+      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://test-project.supabase.co/auth/v1/token?grant_type=password',
+        {
+          method: 'POST',
+          headers: {
+            apikey: serviceRoleKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'user@example.com',
+            password: 'validPassword123!',
+          }),
+        },
+      );
+    });
+
+    it('repassa cabeçalho X-Forwarded-For quando clientIp é informado', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'access-jwt-token',
+          refresh_token: 'refresh-jwt-token',
+          token_type: 'bearer',
+          expires_in: 3600,
+          user: { id: 'auth-user-123' },
+        }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      await provider.signInWithPassword({
+        email: 'user@example.com',
+        password: 'validPassword123!',
+        clientIp: '192.168.1.50',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://test-project.supabase.co/auth/v1/token?grant_type=password',
+        {
+          method: 'POST',
+          headers: {
+            apikey: serviceRoleKey,
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': '192.168.1.50',
+          },
+          body: JSON.stringify({
+            email: 'user@example.com',
+            password: 'validPassword123!',
+          }),
+        },
+      );
+    });
+
+    it('retorna null quando o Supabase Auth responde 400 (credenciais inválidas)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: 'invalid_grant',
+          error_description: 'Invalid login credentials',
+        }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      const result = await provider.signInWithPassword({
+        email: 'user@example.com',
+        password: 'wrongPassword',
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('lança erro quando ocorre erro inesperado no Supabase (status 500)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ msg: 'Internal server error' }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      await expect(
+        provider.signInWithPassword({
+          email: 'user@example.com',
+          password: 'password',
+        }),
+      ).rejects.toThrow('Internal server error');
+    });
+  });
 });

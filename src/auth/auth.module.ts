@@ -10,6 +10,8 @@ import { AuthGuard } from './auth.guard.js';
 import { RolesGuard } from './roles.guard.js';
 import { SupabaseAuthProvider } from './supabase-auth.provider.js';
 import { SupabaseAuthAdminProvider } from './supabase-auth-admin.provider.js';
+import { AuthController } from './auth.controller.js';
+import { AuthService } from './auth.service.js';
 
 export const authProviderFactory: Provider = {
   provide: AUTH_PROVIDER,
@@ -62,12 +64,20 @@ export const authAdminProviderFactory: Provider = {
 
 @Global()
 @Module({
+  controllers: [AuthController],
   providers: [
     authProviderFactory,
     authAdminProviderFactory,
     AuthGuard,
     RolesGuard,
+    AuthService,
   ],
-  exports: [AUTH_PROVIDER, AUTH_ADMIN_PROVIDER, AuthGuard, RolesGuard],
+  exports: [
+    AUTH_PROVIDER,
+    AUTH_ADMIN_PROVIDER,
+    AuthGuard,
+    RolesGuard,
+    AuthService,
+  ],
 })
 export class AuthModule {}

@@ -112,4 +112,58 @@ describe('FakeAuthAdminProvider', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('signInWithPassword', () => {
+    it('retorna AuthSessionResult com tokens e authId no login com sucesso', async () => {
+      const created = await provider.createUser({
+        email: 'user@acme.com',
+        password: 'password123',
+      });
+
+      const session = await provider.signInWithPassword({
+        email: 'user@acme.com',
+        password: 'password123',
+        clientIp: '127.0.0.1',
+      });
+
+      expect(session).toEqual({
+        accessToken: `user:${created.id}`,
+        refreshToken: `refresh:${created.id}`,
+        tokenType: 'bearer',
+        expiresIn: 3600,
+        authId: created.id,
+      });
+
+      expect(provider.signInCalls).toEqual([
+        {
+          email: 'user@acme.com',
+          password: 'password123',
+          clientIp: '127.0.0.1',
+        },
+      ]);
+    });
+
+    it('retorna null se a senha estiver incorreta', async () => {
+      await provider.createUser({
+        email: 'user@acme.com',
+        password: 'correctPassword',
+      });
+
+      const session = await provider.signInWithPassword({
+        email: 'user@acme.com',
+        password: 'wrongPassword',
+      });
+
+      expect(session).toBeNull();
+    });
+
+    it('retorna null se o usuário não existir', async () => {
+      const session = await provider.signInWithPassword({
+        email: 'unknown@acme.com',
+        password: 'anyPassword',
+      });
+
+      expect(session).toBeNull();
+    });
+  });
 });

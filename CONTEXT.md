@@ -54,6 +54,10 @@ _Avoid_: conflito, erro de duplicidade, replay
 
 ### Quem consome
 
+**Portal**:
+Aplicação web onde Usuários e Donos da Empresa realizam login, gestão de cadastros e acompanhamento. Comunica-se exclusivamente com a API do Gateway e nunca acessa o Supabase diretamente.
+_Avoid_: front-end, frontend, painel web, cliente web, site
+
 **Relatório**:
 Visão do dia seguinte gerada a partir do que o Gateway guarda. Consumidor futuro; fora do escopo atual.
 _Avoid_: dashboard, analytics, histórico
