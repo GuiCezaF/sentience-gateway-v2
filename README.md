@@ -20,6 +20,7 @@ cp .env.example .env
 | `DB_SCHEMA` | não | `gateway` | Schema dedicado (`^[a-z_][a-z0-9_]*$`). |
 | `SUPABASE_URL` | sim | — | URL do projeto Supabase (`http` ou `https`); barra final é removida. |
 | `SUPABASE_SERVICE_ROLE_KEY` | sim | — | Chave de serviço (secret/service_role) do Supabase para administração de usuários via REST. |
+| `AUTH_PROVIDER` | não | — | Provedor de autenticação: omitir = Supabase real | `fake` = FakeAuthProvider (desenvolvimento/testes). |
 | `MAX_SYNC_ITEMS` | não | `10000` | Teto de Classificações por Sincronização. |
 | `BODY_LIMIT` | não | `5mb` | Limite do body JSON (formato body-parser: `5mb`, `100kb`, …). |
 
@@ -248,6 +249,199 @@ Cria atomicamente uma nova Empresa e seu respectivo Usuário Dono (`company_admi
 
 Lista todas as empresas cadastradas no sistema. Exige autenticação com papel `super_admin`.
 
+**Resposta `200 OK`**:
+```json
+[
+  {
+    "id": "c0000000-0000-0000-0000-000000000001",
+    "cnpj": "12ABC34501DE35",
+    "legal_name": "Empresa Exemplo Ltda",
+    "email_domain": "exemplo.com.br",
+    "created_at": "2026-09-15T20:00:00.000Z"
+  }
+]
+```
+
+### `POST /v1/companies/:companyId/users`
+
+Cadastra um novo Usuário dentro de uma Empresa existente, criando o registro de identidade no Supabase Auth com Senha Temporária e perfil no banco local.
+
+- **Permissões**: Exige papel `company_admin` pertencente à mesma empresa ou `super_admin`.
+- **Domínio Corporativo**: O email informado obrigatoriamente deve pertencer ao `email_domain` da empresa. Se divergir, retorna `422 Unprocessable Entity`.
+- **Validação de CPF**: 11 dígitos numéricos com validação oficial de Módulo 11.
+- **Unicidade de CPF**: Único por empresa (`UNIQUE(company_id, cpf)`). Se duplicado, retorna `409 Conflict`.
+- **Papel atribuído**: `user` (padrão) ou `company_admin`.
+
+**Corpo da requisição (`application/json`)**:
+```json
+{
+  "name": "João Operador",
+  "email": "joao@exemplo.com.br",
+  "cpf": "11144477735",
+  "role": "user"
+}
+```
+
+**Resposta `201 Created`**:
+```json
+{
+  "id": "u0000000-0000-0000-0000-000000000002",
+  "auth_id": "a0000000-0000-0000-0000-000000000002",
+  "name": "João Operador",
+  "email": "joao@exemplo.com.br",
+  "cpf": "11144477735",
+  "role": "user",
+  "status": "active",
+  "must_change_password": true,
+  "temporary_password": "kL8mP0xQ2w",
+  "created_at": "2026-09-15T20:00:00.000Z"
+}
+```
+
+### `GET /v1/companies/:companyId/users`
+
+Lista todos os usuários pertencentes à empresa informada.
+
+- **Permissões**: Exige papel `company_admin` da mesma empresa ou `super_admin`.
+
+**Resposta `200 OK`**:
+```json
+[
+  {
+    "id": "u0000000-0000-0000-0000-000000000002",
+    "auth_id": "a0000000-0000-0000-0000-000000000002",
+    "name": "João Operador",
+    "email": "joao@exemplo.com.br",
+    "cpf": "11144477735",
+    "status": "active",
+    "must_change_password": false,
+    "role": "user",
+    "roles": ["user"],
+    "created_at": "2026-09-15T20:00:00.000Z",
+    "updated_at": "2026-09-15T20:00:00.000Z"
+  }
+]
+```
+
+---
+
+## Contrato da API: `/v1/users`
+
+### `GET /v1/users/me`
+
+Retorna o perfil completo do usuário autenticado no sistema, incluindo dados da sua empresa vinculada e lista de papéis.
+
+- **Autenticação**: `Bearer <token>` de qualquer usuário ativo com troca de senha realizada.
+- Se o usuário estiver com `must_change_password: true`, a requisição é bloqueada com `403 Forbidden` (`{"error": "password_change_required"}`).
+
+**Resposta `200 OK`**:
+```json
+{
+  "id": "u0000000-0000-0000-0000-000000000001",
+  "auth_id": "a0000000-0000-0000-0000-000000000001",
+  "name": "Maria Silva",
+  "email": "maria@exemplo.com.br",
+  "cpf": "52998224725",
+  "status": "active",
+  "must_change_password": false,
+  "company": {
+    "id": "c0000000-0000-0000-0000-000000000001",
+    "cnpj": "12ABC34501DE35",
+    "legal_name": "Empresa Exemplo Ltda",
+    "email_domain": "exemplo.com.br"
+  },
+  "roles": ["company_admin"],
+  "created_at": "2026-09-15T20:00:00.000Z",
+  "updated_at": "2026-09-15T20:00:00.000Z"
+}
+```
+
+### `PATCH /v1/users/me/password`
+
+Permite a qualquer usuário autenticado definir uma nova senha permanente. É a **única rota liberada** para usuários com pendência de primeiro acesso (`must_change_password: true`).
+
+- Valida a senha atual via Supabase Auth REST (`POST /auth/v1/token?grant_type=password`).
+- Atualiza a nova senha no Supabase Auth (`PUT /auth/v1/admin/users/:id`).
+- Desmarca a flag `must_change_password` para `false` no banco local de forma atômica.
+
+**Corpo da requisição (`application/json`)**:
+```json
+{
+  "currentPassword": "senhaTemporariaOuAtual",
+  "newPassword": "NovaSenhaSegura123!"
+}
+```
+
+**Resposta `200 OK`**:
+```json
+{
+  "message": "Password changed successfully"
+}
+```
+
+---
+
+## Enforcement de Primeiro Acesso (ADR 0008)
+
+Usuários criados pelo Super-admin ou pelo Dono da Empresa recebem uma Senha Temporária e são criados com `must_change_password: true`.
+
+1. **Bloqueio Global**: O `AuthGuard` intercepta qualquer chamada com token válido. Se `must_change_password` for `true`, responde imediatamente `403 Forbidden` com payload `{"error": "password_change_required"}`.
+2. **Exceção de Primeiro Acesso**: Apenas a rota `PATCH /v1/users/me/password` (decorada com `@AllowPasswordChange()`) é permitida.
+3. **Liberação**: Após trocar a senha com sucesso, o usuário passa a ter acesso liberado às rotas condizentes com seus papéis e pode enviar Sincronizações (`POST /v1/syncs`).
+
+---
+
+## Como Testar o Fluxo da Aplicação
+
+O projeto possui diferentes formas de teste, automatizadas e manuais:
+
+### 1. Testes Unitários
+Testa lógica isolada, DTOs Zod, validações de CNPJ alfanumérico e CPF, e serviços com mocks:
+```bash
+bun run test
+```
+
+### 2. Testes End-to-End com Fakes (`test:e2e`)
+Executa 64 testes e2e contra o banco real em um schema isolado (`test`), utilizando os provedores determinísticos `FakeAuthProvider` e `FakeAuthAdminProvider`:
+```bash
+bun run test:e2e
+```
+
+### 3. Teste Manual no Supabase Real (Sem Fakes)
+
+Para validar todo o ciclo de vida da aplicação diretamente contra o Supabase Auth e Banco real:
+
+1. Garanta que `AUTH_PROVIDER=fake` esteja comentado no `.env`.
+2. Aplique as migrations e o seed: `bun run db:migrate && bun run db:seed`.
+3. Inicie o servidor: `bun run start:dev`.
+4. Siga o roteiro passo a passo:
+
+#### Passo 1: Obter o access token do super-admin
+```bash
+curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
+  -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@sentience.internal",
+    "password": "SentienceAdmin123!"
+  }'
+#### Passo 2: Criar uma Empresa e seu Dono (com CNPJ alfanumérico válido)
+```bash
+   curl -i -X POST http://localhost:3000/v1/companies \
+     -H "Authorization: Bearer <ACCESS_TOKEN>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "cnpj": "REAL123456AB51",
+       "legal_name": "Empresa Teste Ltda",
+       "email_domain": "empresateste.com.br",
+       "owner": {
+         "name": "Maria Silva",
+         "email": "maria@empresateste.com.br",
+         "cpf": "52998224725"
+       }
+     }'
+   ```
+
 ---
 
 ## Migrations
@@ -292,7 +486,7 @@ DB_SCHEMA=test AUTH_PROVIDER=fake bun run db:seed
 | `bun run db:migrate` | Aplica migrations ao schema `DB_SCHEMA`. |
 | `bun run db:seed` | Inicializa empresa sentinel e super-admin de forma idempotente. |
 | `bun run test` | Testes unitários (sem rede). |
-| `bun run test:e2e` | Testes e2e. Exige `.env`. |
+| `bun run test:e2e` | Testes e2e (em schema isolado de teste com fakes). Exige `.env`. |
 | `bun run test:cov` | Unitários com cobertura. |
 | `bun run lint` | Oxlint em `src/` e `test/`. |
 | `bun run format` | Prettier em `src/` e `test/`. |
