@@ -76,4 +76,40 @@ describe('FakeAuthAdminProvider', () => {
     expect(provider.users.size).toBe(0);
     expect(provider.deleteCalls).toHaveLength(0);
   });
+
+  describe('verifyCredentials', () => {
+    it('retorna true quando as credenciais conferem', async () => {
+      await provider.createUser({
+        email: 'user@acme.com',
+        password: 'correct-password',
+      });
+
+      const result = await provider.verifyCredentials(
+        'user@acme.com',
+        'correct-password',
+      );
+      expect(result).toBe(true);
+    });
+
+    it('retorna false quando a senha está errada', async () => {
+      await provider.createUser({
+        email: 'user@acme.com',
+        password: 'correct-password',
+      });
+
+      const result = await provider.verifyCredentials(
+        'user@acme.com',
+        'wrong-password',
+      );
+      expect(result).toBe(false);
+    });
+
+    it('retorna false quando o usuário não existe', async () => {
+      const result = await provider.verifyCredentials(
+        'nonexistent@acme.com',
+        'any-password',
+      );
+      expect(result).toBe(false);
+    });
+  });
 });

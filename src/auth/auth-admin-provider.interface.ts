@@ -14,6 +14,7 @@ export interface AuthAdminProvider {
   createUser(params: CreateAdminUserParams): Promise<AdminUserResult>;
   deleteUser(id: string): Promise<void>;
   updatePassword(id: string, newPassword: string): Promise<void>;
+  verifyCredentials(email: string, password: string): Promise<boolean>;
 }
 
 export const AUTH_ADMIN_PROVIDER = Symbol('AUTH_ADMIN_PROVIDER');

@@ -15,7 +15,7 @@ import { AppModule } from '../src/app.module.js';
 import { configuredEnv, configureApp } from '../src/app.setup.js';
 import { AUTH_PROVIDER } from '../src/auth/auth-provider.interface.js';
 import { DRIZZLE, type DrizzleDb } from '../src/db/db.module.js';
-import { syncs, classifications } from '../src/db/schema.js';
+import { syncs, classifications, companies, users } from '../src/db/schema.js';
 import { FakeAuthProvider } from './fake-auth.provider.js';
 import {
   createTestDb,
@@ -50,6 +50,38 @@ describe('POST /v1/syncs (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAll(sql);
+
+    const [sentinel] = await db
+      .insert(companies)
+      .values({
+        cnpj: '00000000000191',
+        legalName: 'Sentience',
+        emailDomain: 'sentience.internal',
+      })
+      .returning();
+
+    await db.insert(users).values([
+      {
+        id: validUserId,
+        authId: validUserId,
+        companyId: sentinel.id,
+        name: 'Sync User 1',
+        email: 'sync1@sentience.internal',
+        cpf: '52998224725',
+        status: 'active',
+        mustChangePassword: false,
+      },
+      {
+        id: 'a0000000-0000-0000-0000-000000000002',
+        authId: 'a0000000-0000-0000-0000-000000000002',
+        companyId: sentinel.id,
+        name: 'Sync User 2',
+        email: 'sync2@sentience.internal',
+        cpf: '71428793860',
+        status: 'active',
+        mustChangePassword: false,
+      },
+    ]);
   });
 
   afterAll(async () => {

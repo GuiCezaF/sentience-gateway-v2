@@ -185,4 +185,62 @@ describe('SupabaseAuthAdminProvider', () => {
       );
     });
   });
+
+  describe('verifyCredentials', () => {
+    it('retorna true quando o Supabase Auth responde 200 OK com token', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'fake-jwt' }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      const isValid = await provider.verifyCredentials(
+        'user@example.com',
+        'validPassword123!',
+      );
+
+      expect(isValid).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://test-project.supabase.co/auth/v1/token?grant_type=password',
+        {
+          method: 'POST',
+          headers: {
+            apikey: serviceRoleKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'user@example.com',
+            password: 'validPassword123!',
+          }),
+        },
+      );
+    });
+
+    it('retorna false quando o Supabase Auth responde com erro 400', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'invalid_grant' }),
+      });
+
+      const provider = new SupabaseAuthAdminProvider(
+        supabaseUrl,
+        serviceRoleKey,
+        mockFetch as unknown as typeof fetch,
+      );
+
+      const isValid = await provider.verifyCredentials(
+        'user@example.com',
+        'wrongPassword',
+      );
+
+      expect(isValid).toBe(false);
+    });
+  });
 });

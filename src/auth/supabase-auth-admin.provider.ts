@@ -112,4 +112,20 @@ export class SupabaseAuthAdminProvider implements AuthAdminProvider {
       throw err;
     }
   }
+
+  async verifyCredentials(email: string, password: string): Promise<boolean> {
+    const url = `${this.baseUrl}/auth/v1/token?grant_type=password`;
+    const body = { email, password };
+
+    const response = await this.fetchFn(url, {
+      method: 'POST',
+      headers: {
+        apikey: this.serviceRoleKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    return response.ok;
+  }
 }

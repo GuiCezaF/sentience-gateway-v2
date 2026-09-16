@@ -53,6 +53,14 @@ export class FakeAuthAdminProvider implements AuthAdminProvider {
     }
   }
 
+  async verifyCredentials(email: string, password: string): Promise<boolean> {
+    const user = this.getUserByEmail(email);
+    if (!user) {
+      return false;
+    }
+    return user.password === password;
+  }
+
   getUser(id: string): FakeUserRecord | undefined {
     return this.users.get(id);
   }

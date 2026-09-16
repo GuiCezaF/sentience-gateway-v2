@@ -6,21 +6,18 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RolesGuard } from './roles.guard.js';
+import type { AuthUser } from './auth-provider.interface.js';
 
 describe('RolesGuard', () => {
   let guard: RolesGuard;
   let reflector: Reflector;
-  let mockDb: any;
 
   beforeEach(() => {
     reflector = new Reflector();
-    mockDb = {
-      select: vi.fn(),
-    };
-    guard = new RolesGuard(reflector, mockDb);
+    guard = new RolesGuard(reflector);
   });
 
-  function createMockContext(user?: { userId: string }): ExecutionContext {
+  function createMockContext(user?: Partial<AuthUser>): ExecutionContext {
     return {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -34,7 +31,7 @@ describe('RolesGuard', () => {
 
   it('permite acesso quando nenhum papel é exigido pela rota', async () => {
     vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(undefined);
-    const context = createMockContext({ userId: 'u-1' });
+    const context = createMockContext({ userId: 'u-1', roles: ['user'] });
 
     const canActivate = await guard.canActivate(context);
     expect(canActivate).toBe(true);
@@ -49,16 +46,9 @@ describe('RolesGuard', () => {
     );
   });
 
-  it('lança ForbiddenException quando o usuário não possui papéis no banco', async () => {
+  it('lança ForbiddenException quando o usuário não possui papéis', async () => {
     vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['super_admin']);
-    const context = createMockContext({ userId: 'u-1' });
-
-    const queryBuilder = {
-      from: vi.fn().mockReturnThis(),
-      innerJoin: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue([]),
-    };
-    mockDb.select.mockReturnValue(queryBuilder);
+    const context = createMockContext({ userId: 'u-1', roles: [] });
 
     await expect(guard.canActivate(context)).rejects.toThrow(
       ForbiddenException,
@@ -67,14 +57,10 @@ describe('RolesGuard', () => {
 
   it('lança ForbiddenException quando o usuário não possui o papel exigido', async () => {
     vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['super_admin']);
-    const context = createMockContext({ userId: 'u-1' });
-
-    const queryBuilder = {
-      from: vi.fn().mockReturnThis(),
-      innerJoin: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue([{ role: 'company_admin' }]),
-    };
-    mockDb.select.mockReturnValue(queryBuilder);
+    const context = createMockContext({
+      userId: 'u-1',
+      roles: ['company_admin'],
+    });
 
     await expect(guard.canActivate(context)).rejects.toThrow(
       ForbiddenException,
@@ -83,14 +69,10 @@ describe('RolesGuard', () => {
 
   it('permite acesso quando o usuário possui o papel exigido', async () => {
     vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['super_admin']);
-    const context = createMockContext({ userId: 'u-1' });
-
-    const queryBuilder = {
-      from: vi.fn().mockReturnThis(),
-      innerJoin: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue([{ role: 'super_admin' }]),
-    };
-    mockDb.select.mockReturnValue(queryBuilder);
+    const context = createMockContext({
+      userId: 'u-1',
+      roles: ['super_admin'],
+    });
 
     const canActivate = await guard.canActivate(context);
     expect(canActivate).toBe(true);

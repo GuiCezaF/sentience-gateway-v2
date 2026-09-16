@@ -1,6 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
-import type { AuthProvider, AuthUser } from './auth-provider.interface.js';
+import type { AuthProvider, AuthIdentity } from './auth-provider.interface.js';
 
 export class SupabaseAuthProvider implements AuthProvider {
   private readonly keyResolver: JWTVerifyGetKey;
@@ -22,7 +22,7 @@ export class SupabaseAuthProvider implements AuthProvider {
     }
   }
 
-  async verify(token: string): Promise<AuthUser> {
+  async verify(token: string): Promise<AuthIdentity> {
     try {
       const { payload } = await jwtVerify(token, this.keyResolver, {
         algorithms: ['ES256'],
