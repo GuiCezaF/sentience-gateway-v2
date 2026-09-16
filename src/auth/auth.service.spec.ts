@@ -6,7 +6,9 @@ import type { AuthAdminProvider } from './auth-admin-provider.interface.js';
 describe('AuthService', () => {
   let service: AuthService;
   let mockDb: any;
-  let mockAuthAdmin: AuthAdminProvider;
+  let mockAuthAdmin: {
+    [K in keyof AuthAdminProvider]: ReturnType<typeof vi.fn>;
+  };
 
   const now = new Date();
 
@@ -22,12 +24,15 @@ describe('AuthService', () => {
       signInWithPassword: vi.fn(),
       refreshToken: vi.fn(),
     };
-    service = new AuthService(mockDb, mockAuthAdmin);
+    service = new AuthService(
+      mockDb,
+      mockAuthAdmin as unknown as AuthAdminProvider,
+    );
   });
 
   describe('login', () => {
     it('autentica com sucesso e retorna tokens e perfil camelCase', async () => {
-      vi.mocked(mockAuthAdmin.signInWithPassword).mockResolvedValue({
+      mockAuthAdmin.signInWithPassword.mockResolvedValue({
         accessToken: 'mock-access-token',
         refreshToken: 'mock-refresh-token',
         tokenType: 'bearer',
@@ -111,7 +116,7 @@ describe('AuthService', () => {
     });
 
     it('permite login de usuário com mustChangePassword: true retornando a flag', async () => {
-      vi.mocked(mockAuthAdmin.signInWithPassword).mockResolvedValue({
+      mockAuthAdmin.signInWithPassword.mockResolvedValue({
         accessToken: 'temp-access-token',
         refreshToken: 'temp-refresh-token',
         tokenType: 'bearer',
@@ -163,7 +168,7 @@ describe('AuthService', () => {
     });
 
     it('lança 401 genérico quando o provedor de auth rejeita as credenciais', async () => {
-      vi.mocked(mockAuthAdmin.signInWithPassword).mockResolvedValue(null);
+      mockAuthAdmin.signInWithPassword.mockResolvedValue(null);
 
       await expect(
         service.login({
@@ -181,7 +186,7 @@ describe('AuthService', () => {
     });
 
     it('lança 401 genérico quando o usuário autenticou no Auth mas não existe no banco local', async () => {
-      vi.mocked(mockAuthAdmin.signInWithPassword).mockResolvedValue({
+      mockAuthAdmin.signInWithPassword.mockResolvedValue({
         accessToken: 'token',
         refreshToken: 'refresh',
         tokenType: 'bearer',
@@ -212,7 +217,7 @@ describe('AuthService', () => {
     });
 
     it('lança 403 Forbidden com { error: "user_inactive" } quando usuário está inativo', async () => {
-      vi.mocked(mockAuthAdmin.signInWithPassword).mockResolvedValue({
+      mockAuthAdmin.signInWithPassword.mockResolvedValue({
         accessToken: 'token',
         refreshToken: 'refresh',
         tokenType: 'bearer',
@@ -262,7 +267,7 @@ describe('AuthService', () => {
 
   describe('refresh', () => {
     it('renova a sessão com sucesso para usuário ativo retornando tokens camelCase', async () => {
-      vi.mocked(mockAuthAdmin.refreshToken).mockResolvedValue({
+      mockAuthAdmin.refreshToken.mockResolvedValue({
         accessToken: 'new-mock-access-token',
         refreshToken: 'new-mock-refresh-token',
         tokenType: 'bearer',
@@ -305,7 +310,7 @@ describe('AuthService', () => {
     });
 
     it('lança 401 quando o provedor de auth rejeita o refresh token', async () => {
-      vi.mocked(mockAuthAdmin.refreshToken).mockResolvedValue(null);
+      mockAuthAdmin.refreshToken.mockResolvedValue(null);
 
       await expect(
         service.refresh({
@@ -322,7 +327,7 @@ describe('AuthService', () => {
     });
 
     it('lança 401 quando usuário renovou no Auth mas não existe no banco local', async () => {
-      vi.mocked(mockAuthAdmin.refreshToken).mockResolvedValue({
+      mockAuthAdmin.refreshToken.mockResolvedValue({
         accessToken: 'new-token',
         refreshToken: 'new-refresh',
         tokenType: 'bearer',
@@ -351,7 +356,7 @@ describe('AuthService', () => {
     });
 
     it('lança 403 Forbidden com { error: "user_inactive" } quando usuário está inativo no banco local', async () => {
-      vi.mocked(mockAuthAdmin.refreshToken).mockResolvedValue({
+      mockAuthAdmin.refreshToken.mockResolvedValue({
         accessToken: 'new-token',
         refreshToken: 'new-refresh',
         tokenType: 'bearer',

@@ -10,7 +10,11 @@ import type { AuthAdminProvider } from '../auth/auth-admin-provider.interface.js
 describe('CompaniesService', () => {
   let service: CompaniesService;
   let mockDb: any;
-  let mockAuthAdmin: AuthAdminProvider;
+  let mockAuthAdmin: {
+    createUser: ReturnType<typeof vi.fn>;
+    deleteUser: ReturnType<typeof vi.fn>;
+    updatePassword: ReturnType<typeof vi.fn>;
+  };
 
   const validDto: CreateCompanyDto = {
     cnpj: '12ABC34501DE35',
@@ -33,7 +37,10 @@ describe('CompaniesService', () => {
       deleteUser: vi.fn(),
       updatePassword: vi.fn(),
     };
-    service = new CompaniesService(mockDb, mockAuthAdmin);
+    service = new CompaniesService(
+      mockDb,
+      mockAuthAdmin as unknown as AuthAdminProvider,
+    );
   });
 
   it('cria empresa e dono com sucesso retornando dados e senha temporária de 10 caracteres', async () => {
@@ -46,7 +53,7 @@ describe('CompaniesService', () => {
     mockDb.select.mockReturnValue(selectBuilder);
 
     // 2. AuthAdmin cria usuário
-    vi.mocked(mockAuthAdmin.createUser).mockResolvedValue({
+    mockAuthAdmin.createUser.mockResolvedValue({
       id: 'auth-user-123',
       email: validDto.owner.email,
     });
@@ -135,7 +142,7 @@ describe('CompaniesService', () => {
     };
     mockDb.select.mockReturnValue(selectBuilder);
 
-    vi.mocked(mockAuthAdmin.createUser).mockResolvedValue({
+    mockAuthAdmin.createUser.mockResolvedValue({
       id: 'auth-user-123',
       email: validDto.owner.email,
     });
@@ -233,7 +240,7 @@ describe('CompaniesService', () => {
         .mockReturnValueOnce(emailSelect);
 
       // 4. AuthAdmin creates user
-      vi.mocked(mockAuthAdmin.createUser).mockResolvedValue({
+      mockAuthAdmin.createUser.mockResolvedValue({
         id: 'auth-new-user',
         email: validUserDto.email,
       });
@@ -306,7 +313,7 @@ describe('CompaniesService', () => {
         .mockReturnValueOnce(cpfSelect)
         .mockReturnValueOnce(emailSelect);
 
-      vi.mocked(mockAuthAdmin.createUser).mockResolvedValue({
+      mockAuthAdmin.createUser.mockResolvedValue({
         id: 'auth-super-created',
         email: validUserDto.email,
       });
@@ -477,7 +484,7 @@ describe('CompaniesService', () => {
 
       const authErr = new Error('already been registered');
       (authErr as any).status = 422;
-      vi.mocked(mockAuthAdmin.createUser).mockRejectedValueOnce(authErr);
+      mockAuthAdmin.createUser.mockRejectedValueOnce(authErr);
 
       await expect(
         service.createCompanyUser(companyId, validUserDto, companyAdminUser),
@@ -508,7 +515,7 @@ describe('CompaniesService', () => {
         .mockReturnValueOnce(cpfSelect)
         .mockReturnValueOnce(emailSelect);
 
-      vi.mocked(mockAuthAdmin.createUser).mockResolvedValue({
+      mockAuthAdmin.createUser.mockResolvedValue({
         id: 'auth-user-rollback',
         email: validUserDto.email,
       });

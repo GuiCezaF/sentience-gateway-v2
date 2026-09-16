@@ -5,7 +5,9 @@ import type { AuthUser } from '../auth/auth-provider.interface.js';
 
 describe('UsersController', () => {
   let controller: UsersController;
-  let mockService: UsersService;
+  let mockService: {
+    [K in keyof UsersService]?: ReturnType<typeof vi.fn>;
+  };
 
   const mockUser: AuthUser = {
     userId: 'u-123',
@@ -22,8 +24,8 @@ describe('UsersController', () => {
     mockService = {
       getProfile: vi.fn(),
       changePassword: vi.fn(),
-    } as unknown as UsersService;
-    controller = new UsersController(mockService);
+    };
+    controller = new UsersController(mockService as unknown as UsersService);
   });
 
   it('delega getProfile para o UsersService', async () => {
@@ -46,7 +48,7 @@ describe('UsersController', () => {
       updated_at: new Date().toISOString(),
     };
 
-    vi.mocked(mockService.getProfile).mockResolvedValue(expectedProfile);
+    (mockService.getProfile as any).mockResolvedValue(expectedProfile);
 
     const result = await controller.getProfile(mockUser);
 
@@ -56,7 +58,7 @@ describe('UsersController', () => {
 
   it('delega changePassword para o UsersService', async () => {
     const expectedResult = { message: 'Password changed successfully' };
-    vi.mocked(mockService.changePassword).mockResolvedValue(expectedResult);
+    (mockService.changePassword as any).mockResolvedValue(expectedResult);
 
     const dto = {
       currentPassword: 'oldPassword12',
@@ -75,7 +77,7 @@ describe('UsersController', () => {
 
   it('extrai clientIp de x-forwarded-for e repassa para o UsersService', async () => {
     const expectedResult = { message: 'Password changed successfully' };
-    vi.mocked(mockService.changePassword).mockResolvedValue(expectedResult);
+    (mockService.changePassword as any).mockResolvedValue(expectedResult);
 
     const dto = {
       currentPassword: 'oldPassword12',

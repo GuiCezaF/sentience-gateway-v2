@@ -40,7 +40,9 @@ function createMockContext(
 }
 
 describe('AuthGuard', () => {
-  let mockAuthProvider: AuthProvider;
+  let mockAuthProvider: {
+    [K in keyof AuthProvider]: ReturnType<typeof vi.fn>;
+  };
   let mockDb: any;
   let reflector: Reflector;
   let guard: AuthGuard;
@@ -53,7 +55,11 @@ describe('AuthGuard', () => {
       select: vi.fn(),
     };
     reflector = new Reflector();
-    guard = new AuthGuard(mockAuthProvider, mockDb, reflector);
+    guard = new AuthGuard(
+      mockAuthProvider as unknown as AuthProvider,
+      mockDb,
+      reflector,
+    );
   });
 
   it('rejeita requisição quando o header Authorization está ausente', async () => {
@@ -85,7 +91,7 @@ describe('AuthGuard', () => {
   });
 
   it('rejeita requisição quando o AuthProvider lança erro', async () => {
-    vi.mocked(mockAuthProvider.verify).mockRejectedValueOnce(
+    mockAuthProvider.verify.mockRejectedValueOnce(
       new Error('Token rejected by provider'),
     );
 
@@ -99,7 +105,7 @@ describe('AuthGuard', () => {
   });
 
   it('rejeita requisição quando o usuário não existe no banco de dados local', async () => {
-    vi.mocked(mockAuthProvider.verify).mockResolvedValueOnce({
+    mockAuthProvider.verify.mockResolvedValueOnce({
       userId: 'auth-id-999',
     });
 
@@ -120,7 +126,7 @@ describe('AuthGuard', () => {
   });
 
   it('bloqueia usuário inativo com 403 Forbidden', async () => {
-    vi.mocked(mockAuthProvider.verify).mockResolvedValueOnce({
+    mockAuthProvider.verify.mockResolvedValueOnce({
       userId: 'auth-id-inactive',
     });
 
@@ -153,7 +159,7 @@ describe('AuthGuard', () => {
   });
 
   it('bloqueia com 403 {"error": "password_change_required"} quando must_change_password é true em rota protegida comum', async () => {
-    vi.mocked(mockAuthProvider.verify).mockResolvedValueOnce({
+    mockAuthProvider.verify.mockResolvedValueOnce({
       userId: 'auth-id-must-change',
     });
 
@@ -191,7 +197,7 @@ describe('AuthGuard', () => {
   });
 
   it('permite acesso quando must_change_password é true no endpoint PATCH /v1/users/me/password', async () => {
-    vi.mocked(mockAuthProvider.verify).mockResolvedValueOnce({
+    mockAuthProvider.verify.mockResolvedValueOnce({
       userId: 'auth-id-must-change',
     });
 
@@ -235,7 +241,7 @@ describe('AuthGuard', () => {
   });
 
   it('permite acesso quando o decorator AllowPasswordChange está presente mesmo em rota diferente', async () => {
-    vi.mocked(mockAuthProvider.verify).mockResolvedValueOnce({
+    mockAuthProvider.verify.mockResolvedValueOnce({
       userId: 'auth-id-must-change',
     });
     vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(true);
@@ -269,7 +275,7 @@ describe('AuthGuard', () => {
   });
 
   it('enriquece request.user com perfil e múltiplos papéis quando usuário é ativo e válido', async () => {
-    vi.mocked(mockAuthProvider.verify).mockResolvedValueOnce({
+    mockAuthProvider.verify.mockResolvedValueOnce({
       userId: 'auth-id-valid',
     });
 

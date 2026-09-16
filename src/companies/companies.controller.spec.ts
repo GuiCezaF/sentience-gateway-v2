@@ -5,14 +5,18 @@ import type { CreateCompanyDto } from './dto/create-company.dto.js';
 
 describe('CompaniesController', () => {
   let controller: CompaniesController;
-  let mockService: CompaniesService;
+  let mockService: {
+    [K in keyof CompaniesService]?: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     mockService = {
       createCompany: vi.fn(),
       findAllCompanies: vi.fn(),
-    } as unknown as CompaniesService;
-    controller = new CompaniesController(mockService);
+    };
+    controller = new CompaniesController(
+      mockService as unknown as CompaniesService,
+    );
   });
 
   it('delega createCompany para o CompaniesService', async () => {
@@ -46,7 +50,7 @@ describe('CompaniesController', () => {
       temporary_password: 'tempPass12',
     };
 
-    vi.mocked(mockService.createCompany).mockResolvedValue(expectedResponse);
+    (mockService.createCompany as any).mockResolvedValue(expectedResponse);
 
     const res = await controller.createCompany(dto);
     expect(res).toBe(expectedResponse);
@@ -64,7 +68,7 @@ describe('CompaniesController', () => {
       },
     ];
 
-    vi.mocked(mockService.findAllCompanies).mockResolvedValue(expectedList);
+    (mockService.findAllCompanies as any).mockResolvedValue(expectedList);
 
     const res = await controller.listCompanies();
     expect(res).toBe(expectedList);

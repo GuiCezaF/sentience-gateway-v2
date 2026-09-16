@@ -7,7 +7,12 @@ import type { AuthUser } from '../auth/auth-provider.interface.js';
 describe('UsersService', () => {
   let service: UsersService;
   let mockDb: any;
-  let mockAuthAdmin: AuthAdminProvider;
+  let mockAuthAdmin: {
+    createUser: ReturnType<typeof vi.fn>;
+    deleteUser: ReturnType<typeof vi.fn>;
+    updatePassword: ReturnType<typeof vi.fn>;
+    verifyCredentials: ReturnType<typeof vi.fn>;
+  };
 
   const mockUser: AuthUser = {
     userId: 'u-123',
@@ -31,7 +36,10 @@ describe('UsersService', () => {
       updatePassword: vi.fn(),
       verifyCredentials: vi.fn(),
     };
-    service = new UsersService(mockDb, mockAuthAdmin);
+    service = new UsersService(
+      mockDb,
+      mockAuthAdmin as unknown as AuthAdminProvider,
+    );
   });
 
   describe('getProfile', () => {
@@ -111,8 +119,8 @@ describe('UsersService', () => {
 
   describe('changePassword', () => {
     it('troca a senha com sucesso, atualiza no Supabase Auth e desmarca mustChangePassword no banco', async () => {
-      vi.mocked(mockAuthAdmin.verifyCredentials).mockResolvedValue(true);
-      vi.mocked(mockAuthAdmin.updatePassword).mockResolvedValue(undefined);
+      mockAuthAdmin.verifyCredentials.mockResolvedValue(true);
+      mockAuthAdmin.updatePassword.mockResolvedValue(undefined);
 
       const updateBuilder = {
         set: vi.fn().mockReturnThis(),
@@ -144,8 +152,8 @@ describe('UsersService', () => {
     });
 
     it('repassa clientIp para authAdminProvider.verifyCredentials quando informado', async () => {
-      vi.mocked(mockAuthAdmin.verifyCredentials).mockResolvedValue(true);
-      vi.mocked(mockAuthAdmin.updatePassword).mockResolvedValue(undefined);
+      mockAuthAdmin.verifyCredentials.mockResolvedValue(true);
+      mockAuthAdmin.updatePassword.mockResolvedValue(undefined);
 
       const updateBuilder = {
         set: vi.fn().mockReturnThis(),
@@ -170,7 +178,7 @@ describe('UsersService', () => {
     });
 
     it('lança BadRequestException quando a senha atual é inválida', async () => {
-      vi.mocked(mockAuthAdmin.verifyCredentials).mockResolvedValue(false);
+      mockAuthAdmin.verifyCredentials.mockResolvedValue(false);
 
       await expect(
         service.changePassword(mockUser, {

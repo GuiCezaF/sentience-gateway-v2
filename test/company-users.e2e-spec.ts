@@ -445,7 +445,7 @@ describe('Company Users (e2e)', () => {
       expect(fakeAuthAdmin.deleteCalls).toHaveLength(1);
       expect(fakeAuthAdmin.users.size).toBe(0);
 
-      vi.mocked(drizzleInstance.transaction).mockImplementation(originalTx);
+      (drizzleInstance.transaction as any).mockImplementation(originalTx);
     });
   });
 

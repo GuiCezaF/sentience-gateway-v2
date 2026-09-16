@@ -295,7 +295,7 @@ describe('Companies (e2e)', () => {
       expect(fakeAuthAdmin.users.size).toBe(0);
 
       // Restaura o mock
-      vi.mocked(drizzleInstance.transaction).mockImplementation(originalTx);
+      (drizzleInstance.transaction as any).mockImplementation(originalTx);
     });
   });
 
