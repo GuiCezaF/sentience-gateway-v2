@@ -70,4 +70,84 @@ describe('CompaniesController', () => {
     expect(res).toBe(expectedList);
     expect(mockService.findAllCompanies).toHaveBeenCalled();
   });
+
+  it('delega createCompanyUser para o CompaniesService', async () => {
+    const dto = {
+      name: 'Carlos Oliveira',
+      email: 'carlos@acme.com.br',
+      cpf: '11144477735',
+    };
+
+    const mockCurrentUser = {
+      userId: 'admin-1',
+      authId: 'auth-1',
+      companyId: 'c-1',
+      roles: ['company_admin'],
+      mustChangePassword: false,
+      status: 'active',
+      email: 'admin@acme.com.br',
+      name: 'Admin',
+    };
+
+    const expectedResponse = {
+      id: 'u-2',
+      auth_id: 'a-2',
+      name: dto.name,
+      email: dto.email,
+      cpf: dto.cpf,
+      role: 'user',
+      status: 'active',
+      must_change_password: true,
+      temporary_password: 'tempPass12',
+      created_at: new Date().toISOString(),
+    };
+
+    mockService.createCompanyUser = vi.fn().mockResolvedValue(expectedResponse);
+
+    const res = await controller.createCompanyUser('c-1', dto, mockCurrentUser);
+    expect(res).toBe(expectedResponse);
+    expect(mockService.createCompanyUser).toHaveBeenCalledWith(
+      'c-1',
+      dto,
+      mockCurrentUser,
+    );
+  });
+
+  it('delega listCompanyUsers para o CompaniesService', async () => {
+    const mockCurrentUser = {
+      userId: 'admin-1',
+      authId: 'auth-1',
+      companyId: 'c-1',
+      roles: ['company_admin'],
+      mustChangePassword: false,
+      status: 'active',
+      email: 'admin@acme.com.br',
+      name: 'Admin',
+    };
+
+    const expectedUsers = [
+      {
+        id: 'u-2',
+        auth_id: 'a-2',
+        name: 'Carlos Oliveira',
+        email: 'carlos@acme.com.br',
+        cpf: '11144477735',
+        status: 'active',
+        must_change_password: true,
+        role: 'user',
+        roles: ['user'],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+
+    mockService.findCompanyUsers = vi.fn().mockResolvedValue(expectedUsers);
+
+    const res = await controller.listCompanyUsers('c-1', mockCurrentUser);
+    expect(res).toBe(expectedUsers);
+    expect(mockService.findCompanyUsers).toHaveBeenCalledWith(
+      'c-1',
+      mockCurrentUser,
+    );
+  });
 });

@@ -172,4 +172,446 @@ describe('CompaniesService', () => {
     expect(companiesList[0].cnpj).toBe('12ABC34501DE35');
     expect(companiesList[0].created_at).toBe(now.toISOString());
   });
+
+  describe('createCompanyUser', () => {
+    const companyId = 'c-123';
+    const validUserDto = {
+      name: 'Carlos Oliveira',
+      email: 'carlos@acme.com.br',
+      cpf: '11144477735',
+    };
+
+    const companyAdminUser: any = {
+      userId: 'admin-1',
+      authId: 'auth-1',
+      companyId: 'c-123',
+      roles: ['company_admin'],
+      mustChangePassword: false,
+      status: 'active',
+      email: 'admin@acme.com.br',
+      name: 'Admin',
+    };
+
+    const superAdminUser: any = {
+      userId: 'super-1',
+      authId: 'auth-super',
+      companyId: 'c-sentinel',
+      roles: ['super_admin'],
+      mustChangePassword: false,
+      status: 'active',
+      email: 'admin@sentience.internal',
+      name: 'Super Admin',
+    };
+
+    it('cria usuário com papel user e senha temporária de 10 caracteres com sucesso', async () => {
+      // 1. Target company exists
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValue([{ id: companyId, emailDomain: 'acme.com.br' }]),
+      };
+
+      // 2. CPF does not exist in company
+      const cpfSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      // 3. Email does not exist in local db
+      const emailSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      mockDb.select
+        .mockReturnValueOnce(companySelect)
+        .mockReturnValueOnce(cpfSelect)
+        .mockReturnValueOnce(emailSelect);
+
+      // 4. AuthAdmin creates user
+      vi.mocked(mockAuthAdmin.createUser).mockResolvedValue({
+        id: 'auth-new-user',
+        email: validUserDto.email,
+      });
+
+      // 5. DB transaction persists user & role
+      const now = new Date();
+      mockDb.transaction.mockImplementation(async (callback: any) => {
+        const tx = {
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockImplementation(() => {
+                return [
+                  {
+                    id: 'u-new',
+                    authId: 'auth-new-user',
+                    companyId,
+                    name: validUserDto.name,
+                    email: validUserDto.email,
+                    cpf: validUserDto.cpf,
+                    status: 'active',
+                    mustChangePassword: true,
+                    role: 'user',
+                    createdAt: now,
+                  },
+                ];
+              }),
+            }),
+          }),
+        };
+        return callback(tx);
+      });
+
+      const res = await service.createCompanyUser(
+        companyId,
+        validUserDto,
+        companyAdminUser,
+      );
+
+      expect(res.id).toBe('u-new');
+      expect(res.auth_id).toBe('auth-new-user');
+      expect(res.role).toBe('user');
+      expect(res.status).toBe('active');
+      expect(res.must_change_password).toBe(true);
+      expect(res.temporary_password).toHaveLength(10);
+      expect(res.temporary_password).toMatch(/^[A-Za-z0-9]+$/);
+      expect(mockAuthAdmin.deleteUser).not.toHaveBeenCalled();
+    });
+
+    it('permite super_admin cadastrar usuário em qualquer empresa', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValue([{ id: companyId, emailDomain: 'acme.com.br' }]),
+      };
+      const cpfSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const emailSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      mockDb.select
+        .mockReturnValueOnce(companySelect)
+        .mockReturnValueOnce(cpfSelect)
+        .mockReturnValueOnce(emailSelect);
+
+      vi.mocked(mockAuthAdmin.createUser).mockResolvedValue({
+        id: 'auth-super-created',
+        email: validUserDto.email,
+      });
+
+      const now = new Date();
+      mockDb.transaction.mockImplementation(async (callback: any) => {
+        const tx = {
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockReturnValue([
+                {
+                  id: 'u-super',
+                  authId: 'auth-super-created',
+                  companyId,
+                  name: validUserDto.name,
+                  email: validUserDto.email,
+                  cpf: validUserDto.cpf,
+                  status: 'active',
+                  mustChangePassword: true,
+                  role: 'user',
+                  createdAt: now,
+                },
+              ]),
+            }),
+          }),
+        };
+        return callback(tx);
+      });
+
+      const res = await service.createCompanyUser(
+        companyId,
+        validUserDto,
+        superAdminUser,
+      );
+
+      expect(res.id).toBe('u-super');
+    });
+
+    it('lança ForbiddenException (403) se admin tentar cadastrar em outra empresa', async () => {
+      const otherCompanyAdmin: any = {
+        ...companyAdminUser,
+        companyId: 'c-other',
+      };
+
+      await expect(
+        service.createCompanyUser(companyId, validUserDto, otherCompanyAdmin),
+      ).rejects.toThrow('Access denied: user does not belong to this company');
+
+      expect(mockDb.select).not.toHaveBeenCalled();
+      expect(mockAuthAdmin.createUser).not.toHaveBeenCalled();
+    });
+
+    it('lança NotFoundException (404) se a empresa alvo não existir', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      mockDb.select.mockReturnValueOnce(companySelect);
+
+      await expect(
+        service.createCompanyUser(companyId, validUserDto, companyAdminUser),
+      ).rejects.toThrow('Company not found');
+    });
+
+    it('lança UnprocessableEntityException (422) se o domínio do email for divergente', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValue([{ id: companyId, emailDomain: 'acme.com.br' }]),
+      };
+      mockDb.select.mockReturnValueOnce(companySelect);
+
+      const invalidDomainDto = {
+        ...validUserDto,
+        email: 'carlos@outro.com.br',
+      };
+
+      await expect(
+        service.createCompanyUser(
+          companyId,
+          invalidDomainDto,
+          companyAdminUser,
+        ),
+      ).rejects.toThrow('User email must belong to company email domain');
+      expect(mockAuthAdmin.createUser).not.toHaveBeenCalled();
+    });
+
+    it('lança ConflictException (409) se o CPF já estiver cadastrado na mesma empresa', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValue([{ id: companyId, emailDomain: 'acme.com.br' }]),
+      };
+      const cpfSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ id: 'existing-u' }]),
+      };
+
+      mockDb.select
+        .mockReturnValueOnce(companySelect)
+        .mockReturnValueOnce(cpfSelect);
+
+      await expect(
+        service.createCompanyUser(companyId, validUserDto, companyAdminUser),
+      ).rejects.toThrow('User with this CPF already exists in this company');
+      expect(mockAuthAdmin.createUser).not.toHaveBeenCalled();
+    });
+
+    it('lança ConflictException (409) se o email já estiver cadastrado no banco local', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValue([{ id: companyId, emailDomain: 'acme.com.br' }]),
+      };
+      const cpfSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const emailSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ id: 'existing-u' }]),
+      };
+
+      mockDb.select
+        .mockReturnValueOnce(companySelect)
+        .mockReturnValueOnce(cpfSelect)
+        .mockReturnValueOnce(emailSelect);
+
+      await expect(
+        service.createCompanyUser(companyId, validUserDto, companyAdminUser),
+      ).rejects.toThrow('User with this email already exists');
+      expect(mockAuthAdmin.createUser).not.toHaveBeenCalled();
+    });
+
+    it('lança ConflictException (409) se o email já existir no Supabase Auth', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValue([{ id: companyId, emailDomain: 'acme.com.br' }]),
+      };
+      const cpfSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const emailSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      mockDb.select
+        .mockReturnValueOnce(companySelect)
+        .mockReturnValueOnce(cpfSelect)
+        .mockReturnValueOnce(emailSelect);
+
+      const authErr = new Error('already been registered');
+      (authErr as any).status = 422;
+      vi.mocked(mockAuthAdmin.createUser).mockRejectedValueOnce(authErr);
+
+      await expect(
+        service.createCompanyUser(companyId, validUserDto, companyAdminUser),
+      ).rejects.toThrow('User with this email already exists in Auth');
+    });
+
+    it('executa compensação de saga (deleteUser) se a transação do banco falhar', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValue([{ id: companyId, emailDomain: 'acme.com.br' }]),
+      };
+      const cpfSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const emailSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      mockDb.select
+        .mockReturnValueOnce(companySelect)
+        .mockReturnValueOnce(cpfSelect)
+        .mockReturnValueOnce(emailSelect);
+
+      vi.mocked(mockAuthAdmin.createUser).mockResolvedValue({
+        id: 'auth-user-rollback',
+        email: validUserDto.email,
+      });
+
+      mockDb.transaction.mockRejectedValueOnce(
+        new Error('Simulated database failure'),
+      );
+
+      await expect(
+        service.createCompanyUser(companyId, validUserDto, companyAdminUser),
+      ).rejects.toThrow('Simulated database failure');
+
+      expect(mockAuthAdmin.deleteUser).toHaveBeenCalledWith(
+        'auth-user-rollback',
+      );
+    });
+  });
+
+  describe('findCompanyUsers', () => {
+    const companyId = 'c-123';
+    const companyAdminUser: any = {
+      userId: 'admin-1',
+      authId: 'auth-1',
+      companyId: 'c-123',
+      roles: ['company_admin'],
+      mustChangePassword: false,
+      status: 'active',
+      email: 'admin@acme.com.br',
+      name: 'Admin',
+    };
+
+    it('lista os usuários da empresa agregando papéis', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ id: companyId }]),
+      };
+
+      const now = new Date();
+      const usersSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockResolvedValue([
+          {
+            id: 'u-1',
+            authId: 'a-1',
+            name: 'Carlos Oliveira',
+            email: 'carlos@acme.com.br',
+            cpf: '11144477735',
+            status: 'active',
+            mustChangePassword: true,
+            role: 'user',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]),
+      };
+
+      mockDb.select
+        .mockReturnValueOnce(companySelect)
+        .mockReturnValueOnce(usersSelect);
+
+      const users = await service.findCompanyUsers(companyId, companyAdminUser);
+
+      expect(users).toHaveLength(1);
+      expect(users[0]).toEqual({
+        id: 'u-1',
+        auth_id: 'a-1',
+        name: 'Carlos Oliveira',
+        email: 'carlos@acme.com.br',
+        cpf: '11144477735',
+        status: 'active',
+        must_change_password: true,
+        role: 'user',
+        roles: ['user'],
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      });
+    });
+
+    it('lança ForbiddenException (403) se admin tentar listar usuários de outra empresa', async () => {
+      const otherAdmin: any = {
+        ...companyAdminUser,
+        companyId: 'c-other',
+      };
+
+      await expect(
+        service.findCompanyUsers(companyId, otherAdmin),
+      ).rejects.toThrow('Access denied: user does not belong to this company');
+    });
+
+    it('lança NotFoundException (404) se a empresa não existir', async () => {
+      const companySelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      mockDb.select.mockReturnValueOnce(companySelect);
+
+      await expect(
+        service.findCompanyUsers(companyId, companyAdminUser),
+      ).rejects.toThrow('Company not found');
+    });
+  });
 });
